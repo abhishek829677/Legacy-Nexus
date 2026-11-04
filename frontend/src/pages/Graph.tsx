@@ -47,8 +47,8 @@ export function GraphPage() {
   };
   const switcher = (
     <div className="seg" role="tablist" aria-label="Map view" data-tour="map-switch">
-      <button className={view === "business" ? "on" : ""} onClick={() => choose("business")}><LuLayers size={14} /> Business view (files)</button>
-      <button className={view === "technical" ? "on" : ""} onClick={() => choose("technical")}><LuCode size={14} /> Technical view</button>
+      <button role="tab" aria-selected={view === "business"} aria-label="Business view (files)" title="Business view (files)" className={view === "business" ? "on" : ""} onClick={() => choose("business")}><LuLayers size={14} /> <span className="seg-label">Business<span className="hide-sm"> view (files)</span></span></button>
+      <button role="tab" aria-selected={view === "technical"} aria-label="Technical view" title="Technical view" className={view === "technical" ? "on" : ""} onClick={() => choose("technical")}><LuCode size={14} /> <span className="seg-label">Technical<span className="hide-sm"> view</span></span></button>
     </div>
   );
   if (view === "business") {
@@ -86,22 +86,23 @@ function TechnicalGraph({ pid, switcher }: { pid: number; switcher: ReactNode })
   return (
     <AppShell title="Dependency map" wide actions={switcher}>
       <div className={`graph-page ${selected ? "" : "no-panel"}`}>
-        <div className="graph-stage" data-tour="graph-canvas">
+        <div className="graph-stage has-toolbar has-hud" data-tour="graph-canvas">
           <div className="graph-toolbar">
-            <div className="panel" data-tour="graph-filters">
+            <div className="panel panel-filters" role="group" aria-label="Show element types" data-tour="graph-filters">
               {ALL_TYPES.map((t) => (
-                <button key={t} className={`chip ${types.includes(t) ? "on" : ""}`} onClick={() => toggle(t)}>
+                <button key={t} className={`chip ${types.includes(t) ? "on" : ""}`} aria-pressed={types.includes(t)} onClick={() => toggle(t)}>
                   <TypeDot type={t} /> {TYPE_LABELS[t]}
                 </button>
               ))}
-              <label className="check" style={{ padding: "0 6px" }}>
+              <span className="tb-sep" aria-hidden="true" />
+              <label className="check">
                 <input type="checkbox" checked={columns} onChange={(e) => setColumns(e.target.checked)} /> Columns
               </label>
-              <label className="check" style={{ padding: "0 6px" }}>
+              <label className="check">
                 <input type="checkbox" checked={fks} onChange={(e) => setFks(e.target.checked)} /> Foreign keys
               </label>
             </div>
-            <div className="panel" style={{ minWidth: 300 }} data-tour="graph-search">
+            <div className="panel panel-search" data-tour="graph-search">
               <SymbolSearch projectId={pid} types="program,table,job,dataset,api,procedure,copybook,external,column" placeholder="Focus on a program, table, job…"
                 value={search} onChange={setSearch} onPick={(h) => {
                   if (h.type === "column") setColumns(true);
@@ -118,27 +119,48 @@ function TechnicalGraph({ pid, switcher }: { pid: number; switcher: ReactNode })
               )}
             </div>
             <div className="spacer" />
-            <div className="panel">
-              <label className="check" style={{ padding: "0 6px" }}><input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} /> Edge labels</label>
-              <button className="btn btn-ghost btn-icon btn-sm" title="Zoom in" onClick={() => canvas.current?.zoom(1.25)}><LuZoomIn size={16} /></button>
-              <button className="btn btn-ghost btn-icon btn-sm" title="Zoom out" onClick={() => canvas.current?.zoom(0.8)}><LuZoomOut size={16} /></button>
-              <button className="btn btn-ghost btn-icon btn-sm" title="Fit to screen" onClick={() => canvas.current?.fit()}><LuMaximize size={16} /></button>
-              <button className="btn btn-ghost btn-icon btn-sm" title="Export PNG" onClick={exportPng}><LuImage size={16} /></button>
+            <div className="panel panel-tools" role="group" aria-label="View">
+              <label className="check"><input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} /> Edge labels</label>
+              <span className="tb-sep" aria-hidden="true" />
+              <button className="btn btn-ghost btn-icon btn-sm" title="Zoom in" aria-label="Zoom in" onClick={() => canvas.current?.zoom(1.25)}><LuZoomIn size={16} /></button>
+              <button className="btn btn-ghost btn-icon btn-sm" title="Zoom out" aria-label="Zoom out" onClick={() => canvas.current?.zoom(0.8)}><LuZoomOut size={16} /></button>
+              <button className="btn btn-ghost btn-icon btn-sm" title="Fit to screen" aria-label="Fit to screen" onClick={() => canvas.current?.fit()}><LuMaximize size={16} /></button>
+              <button className="btn btn-ghost btn-icon btn-sm" title="Export PNG" aria-label="Export PNG" onClick={exportPng}><LuImage size={16} /></button>
             </div>
           </div>
-          {loading && !data && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}><Loading label="Laying out graph" /></div>}
-          {error && <div style={{ position: "absolute", top: 80, left: 20, right: 20 }}><ErrorBox message={error} /></div>}
-          {data && graph.nodes.length === 0 && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }} className="muted">No elements match the selected filters.</div>}
-          {graph.nodes.length > 0 && <GraphCanvas ref={canvas} graph={graph} selected={selected} onSelect={setSelected} showEdgeLabels={labels} dense={graph.nodes.length > 60} />}
-          <div className="graph-legend">
-            <span><span className="dot" style={{ background: "#15807a" }} /> writes</span>
-            <span><span className="dot" style={{ background: "#9aa8ba" }} /> calls / reads / runs</span>
-          </div>
+          {loading && !data && <div className="graph-overlay"><Loading label="Laying out graph" /></div>}
+          {error && <div className="graph-error"><ErrorBox message={error} /></div>}
+          {data && graph.nodes.length === 0 && <div className="graph-overlay muted">No elements match the selected filters.</div>}
+          {graph.nodes.length > 0 && <GraphCanvas ref={canvas} graph={graph} selected={selected} onSelect={setSelected} showEdgeLabels={labels} dense={graph.nodes.length > 60} ariaLabel="Dependency graph" />}
+          <EdgeLegend graph={graph} selected={!!selected} />
           {graph.nodes.length > 0 && <GraphHud graph={graph} />}
         </div>
         {selected && <NodePanel projectId={pid} id={selected} onClose={() => setSelected(null)} onFocus={(id) => { setFocus(id); setSelected(id); }} />}
       </div>
     </AppShell>
+  );
+}
+
+/** Link styles drawn by GraphCanvas. The first two always show; the rest only when present on the canvas. */
+const EDGE_STYLES: { label: string; color: string; line: "solid" | "dashed" | "dotted"; kinds?: string[] }[] = [
+  { label: "writes", color: "#15807a", line: "solid" },
+  { label: "calls / reads / runs", color: "#9aa8ba", line: "solid" },
+  { label: "controls", color: "#c9821b", line: "dashed", kinds: ["CONTROL"] },
+  { label: "decided at runtime", color: "#c2410c", line: "dashed", kinds: ["UNRESOLVED_CALL"] },
+  { label: "uses / config / column", color: "#9aa8ba", line: "dotted", kinds: ["USES", "MAPS_TO", "CONFIGURES", "HAS_COLUMN"] },
+];
+
+function EdgeLegend({ graph, selected }: { graph: Graph; selected: boolean }) {
+  const present = new Set(graph.edges.map((e) => e.type));
+  const rows = EDGE_STYLES.filter((s) => !s.kinds || s.kinds.some((k) => present.has(k)));
+  return (
+    <div className="graph-legend" role="note" aria-label="Link legend">
+      <span className="lg-title">Links</span>
+      {rows.map((s) => (
+        <span key={s.label}><i className="lg-line" style={{ borderTopColor: s.color, borderTopStyle: s.line }} /> {s.label}</span>
+      ))}
+      {selected && <span><i className="lg-line lg-hl" /> links of the selection</span>}
+    </div>
   );
 }
 
@@ -150,12 +172,13 @@ function NodePanel({ projectId, id, onClose, onFocus }: { projectId: number; id:
 
   const Rel = ({ e, dir }: { e: GraphEdge; dir: "in" | "out" }) => {
     const other = dir === "in" ? e.source : e.target;
+    const name = other.split(":").slice(1).join(":");
     const ev = e.evidence?.[0];
     return (
       <div className="rel">
         <span className="t">{e.type.replace("_", " ").toLowerCase()}</span>
         <TypeDot type={other.split(":")[0]} />
-        <button className="btn btn-ghost btn-sm" style={{ height: 24, padding: "0 4px" }} onClick={() => onFocus(other)}>{other.split(":").slice(1).join(":")}</button>
+        <button className="btn btn-ghost btn-sm rel-name" title={`Focus the graph on ${name}`} onClick={() => onFocus(other)}>{name}</button>
         <span className="spacer" />
         {ev && <button className="cite" onClick={() => openSource(ev.file, ev.line)}>{ev.file.split("/").pop()}:{ev.line}</button>}
       </div>
@@ -163,14 +186,16 @@ function NodePanel({ projectId, id, onClose, onFocus }: { projectId: number; id:
   };
 
   return (
-    <aside className="side-panel">
-      <div className="row" style={{ marginBottom: 14 }}>
-        <TypeDot type={type} />
-        <span className="subtle">{TYPE_LABELS[type] ?? type}</span>
-        <div className="spacer" />
-        <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose} aria-label="Close details"><LuX size={16} /></button>
+    <aside className="side-panel" aria-label="Element details">
+      <div className="side-panel-head">
+        <div className="row">
+          <TypeDot type={type} />
+          <span className="subtle">{TYPE_LABELS[type] ?? type}</span>
+          <div className="spacer" />
+          <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose} aria-label="Close details" title="Close details"><LuX size={16} /></button>
+        </div>
+        <h2 className="mono">{label}</h2>
       </div>
-      <h2 className="mono" style={{ fontSize: 17, wordBreak: "break-all" }}>{label}</h2>
       {data && (Boolean(data.node.hub) || Boolean(data.node.unused)) && (
         <div className="row-wrap" style={{ marginTop: 8 }}>
           {Boolean(data.node.hub) && <span className="tag tag-red">Critical hub: many parts depend on it</span>}
@@ -205,35 +230,41 @@ function NodePanel({ projectId, id, onClose, onFocus }: { projectId: number; id:
               <button className="btn btn-sm btn-primary" onClick={() => navigate(`/projects/${projectId}/impact?target=${encodeURIComponent(id)}`)}>Analyse impact</button>
             )}
           </div>
-          {data.incoming.length > 0 && <div><div className="label" style={{ marginBottom: 6 }}>Incoming</div><div className="rel-list">{data.incoming.map((e, i) => <Rel key={i} e={e} dir="in" />)}</div></div>}
-          {data.outgoing.length > 0 && <div><div className="label" style={{ marginBottom: 6 }}>Outgoing</div><div className="rel-list">{data.outgoing.map((e, i) => <Rel key={i} e={e} dir="out" />)}</div></div>}
+          {data.incoming.length > 0 && <section><div className="mini-h">Incoming <span className="subtle">{data.incoming.length}</span></div><div className="rel-list">{data.incoming.map((e, i) => <Rel key={i} e={e} dir="in" />)}</div></section>}
+          {data.outgoing.length > 0 && <section><div className="mini-h">Outgoing <span className="subtle">{data.outgoing.length}</span></div><div className="rel-list">{data.outgoing.map((e, i) => <Rel key={i} e={e} dir="out" />)}</div></section>}
           {data.definition && (
-            <div>
-              <div className="label" style={{ marginBottom: 6 }}>Columns</div>
-              {data.definition.map((c) => (
-                <div key={c.name} className="rel"><span className="mono" style={{ fontSize: 12.5 }}>{c.name}</span><span className="spacer" /><span className="subtle">{c.type}{c.primary_key ? " · PK" : ""}</span></div>
-              ))}
-            </div>
+            <section>
+              <div className="mini-h">Columns <span className="subtle">{data.definition.length}</span></div>
+              <div className="rel-list">
+                {data.definition.map((c) => (
+                  <div key={c.name} className="rel"><span className="mono" style={{ fontSize: 12.5 }}>{c.name}</span><span className="spacer" /><span className="subtle">{c.type}{c.primary_key ? " · PK" : ""}</span></div>
+                ))}
+              </div>
+            </section>
           )}
           {data.paragraphs && (
-            <div>
-              <div className="label" style={{ marginBottom: 6 }}>Paragraphs</div>
-              {data.paragraphs.map((p) => (
-                <div key={p.name} className="rel" style={{ cursor: "pointer" }} onClick={() => openSource(data.node.file as string, p.start_line, p.end_line)}>
-                  <span className="mono" style={{ fontSize: 12.5 }}>{p.name}</span><span className="spacer" /><span className="subtle">{p.start_line}–{p.end_line}</span>
-                </div>
-              ))}
-            </div>
+            <section>
+              <div className="mini-h">Paragraphs <span className="subtle">{data.paragraphs.length}</span></div>
+              <div className="rel-list">
+                {data.paragraphs.map((p) => (
+                  <button key={p.name} type="button" className="rel rel-btn" onClick={() => openSource(data.node.file as string, p.start_line, p.end_line)}>
+                    <span className="mono" style={{ fontSize: 12.5 }}>{p.name}</span><span className="spacer" /><span className="subtle">{p.start_line}–{p.end_line}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
           )}
           {data.rules && data.rules.length > 0 && (
-            <div>
-              <div className="label" style={{ marginBottom: 6 }}>Business rules</div>
-              {data.rules.slice(0, 8).map((r) => (
-                <div key={r.id} className="rel" style={{ alignItems: "flex-start", cursor: "pointer" }} onClick={() => openSource(r.file, r.start_line, r.end_line)}>
-                  <span className="mono" style={{ fontSize: 12 }}>{r.id}</span><span style={{ fontSize: 12.5 }}>{r.description}</span>
-                </div>
-              ))}
-            </div>
+            <section>
+              <div className="mini-h">Business rules <span className="subtle">{data.rules.length > 8 ? `8 of ${data.rules.length}` : data.rules.length}</span></div>
+              <div className="rel-list">
+                {data.rules.slice(0, 8).map((r) => (
+                  <button key={r.id} type="button" className="rel rel-btn" style={{ alignItems: "flex-start" }} onClick={() => openSource(r.file, r.start_line, r.end_line)}>
+                    <span className="mono" style={{ fontSize: 12 }}>{r.id}</span><span style={{ fontSize: 12.5 }}>{r.description}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
           )}
         </div>
       )}

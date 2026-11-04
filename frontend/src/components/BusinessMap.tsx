@@ -146,14 +146,14 @@ export function BusinessMap({ projectId }: { projectId: number }) {
 
   return (
     <div className={`graph-page ${selected ? "" : "no-panel"}`}>
-      <div className="graph-stage" data-tour="map-canvas">
+      <div className="graph-stage has-toolbar" data-tour="map-canvas">
         <div className="graph-toolbar">
-          <div className="panel" style={{ minWidth: 260, flexWrap: "nowrap" }} data-tour="map-search">
+          <div className="panel panel-search" style={{ flexWrap: "nowrap" }} data-tour="map-search">
             <LuSearch size={15} style={{ marginLeft: 6, color: "var(--text-3)" }} />
             <input className="input" style={{ border: "none", height: 30, boxShadow: "none" }} placeholder="Find a file, table or business area" value={q} onChange={(e) => setQ(e.target.value)} />
             {q && <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setQ("")} aria-label="Clear search"><LuX size={14} /></button>}
           </div>
-          <div className="panel" data-tour="map-filters">
+          <div className="panel panel-filters" data-tour="map-filters">
             <select className="select" style={{ height: 32, width: 210 }} value={capability} onChange={(e) => setCapability(e.target.value)} aria-label="Business area">
               <option value="">All business areas</option>
               {capabilities.map((c) => <option key={c}>{c}</option>)}
@@ -163,17 +163,17 @@ export function BusinessMap({ projectId }: { projectId: number }) {
             <label className="check" style={{ padding: "0 6px" }}><input type="checkbox" checked={showDocs} onChange={(e) => setShowDocs(e.target.checked)} /> Documents</label>
           </div>
           <div className="spacer" />
-          <div className="panel">
-            <button className="btn btn-ghost btn-icon btn-sm" title="Zoom in" onClick={() => canvas.current?.zoom(1.25)}><LuZoomIn size={16} /></button>
-            <button className="btn btn-ghost btn-icon btn-sm" title="Zoom out" onClick={() => canvas.current?.zoom(0.8)}><LuZoomOut size={16} /></button>
-            <button className="btn btn-ghost btn-icon btn-sm" title="Fit to screen" onClick={() => canvas.current?.fit()}><LuMaximize size={16} /></button>
-            <button className="btn btn-ghost btn-icon btn-sm" title="Export PNG" onClick={exportPng}><LuImage size={16} /></button>
+          <div className="panel panel-tools" role="group" aria-label="View">
+            <button className="btn btn-ghost btn-icon btn-sm" title="Zoom in" aria-label="Zoom in" onClick={() => canvas.current?.zoom(1.25)}><LuZoomIn size={16} /></button>
+            <button className="btn btn-ghost btn-icon btn-sm" title="Zoom out" aria-label="Zoom out" onClick={() => canvas.current?.zoom(0.8)}><LuZoomOut size={16} /></button>
+            <button className="btn btn-ghost btn-icon btn-sm" title="Fit to screen" aria-label="Fit to screen" onClick={() => canvas.current?.fit()}><LuMaximize size={16} /></button>
+            <button className="btn btn-ghost btn-icon btn-sm" title="Export PNG" aria-label="Export PNG" onClick={exportPng}><LuImage size={16} /></button>
           </div>
         </div>
-        {loading && !data && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}><Loading label="Building the map" /></div>}
-        {error && <div style={{ position: "absolute", top: 80, left: 20, right: 20 }}><ErrorBox message={error} /></div>}
-        {data && graph.nodes.length === 0 && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }} className="muted">Nothing matches these filters.</div>}
-        {graph.nodes.length > 0 && <GraphCanvas ref={canvas} graph={graph} selected={selected} onSelect={setSelected} nodeAccent={accent} showEdgeLabels dense={graph.nodes.length > 50} />}
+        {loading && !data && <div className="graph-overlay"><Loading label="Building the map" /></div>}
+        {error && <div className="graph-error"><ErrorBox message={error} /></div>}
+        {data && graph.nodes.length === 0 && <div className="graph-overlay muted">Nothing matches these filters.</div>}
+        {graph.nodes.length > 0 && <GraphCanvas ref={canvas} graph={graph} selected={selected} onSelect={setSelected} nodeAccent={accent} showEdgeLabels dense={graph.nodes.length > 50} ariaLabel="Business map" />}
         <div className="graph-legend">
           <span>
             {graph.nodes.filter((n) => n.id.startsWith("file:")).length} files · {graph.edges.length} connections

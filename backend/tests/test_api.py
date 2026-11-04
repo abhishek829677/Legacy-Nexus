@@ -81,6 +81,30 @@ def test_modernization(client, auth, sample_project):
     assert "Scenario:" in g.text
 
 
+def test_modernization_readiness_inputs_explain_scores(client, auth, sample_project):
+    """The added key/weight/inputs fields are read-only explanations: they must reproduce every score exactly."""
+    r = client.post(f"/api/projects/{sample_project}/modernization",
+                    json={"language": "java", "database": "postgresql", "platform": "azure"}, headers=auth).json()
+    readiness = r["readiness"]
+    f = {x["key"]: x for x in readiness["factors"]}
+    assert set(f) == {"code_complexity", "rule_traceability", "self_documentation", "interface_clarity", "static_resolvability"}
+    for x in readiness["factors"]:
+        assert {"name", "score", "detail", "weight", "inputs"} <= set(x)
+        assert x["weight"] == 1 / len(readiness["factors"])
+    i = {k: v["inputs"] for k, v in f.items()}
+    raw = {
+        "code_complexity": max(0, 100 - i["code_complexity"]["avg_cyclomatic_complexity"] * 3),
+        "rule_traceability": 100 if i["rule_traceability"]["rules_total"] else 40,
+        "self_documentation": round(i["self_documentation"]["programs_with_purpose"] / max(1, i["self_documentation"]["programs_total"]) * 100),
+        "interface_clarity": max(0, 100 - i["interface_clarity"]["undocumented_interfaces"] * 15),
+        "static_resolvability": max(0, 100 - i["static_resolvability"]["dynamic_calls"] * 20),
+    }
+    for k, v in raw.items():
+        assert f[k]["score"] == round(v)
+    assert readiness["score"] == round(sum(raw.values()) / len(raw))
+    assert i["self_documentation"]["programs_total"] == 6
+
+
 def test_ask_without_model_gives_evidence(client, auth, sample_project):
     r = client.post(f"/api/projects/{sample_project}/ask", json={"question": "Where is interest calculated?"},
                     headers=auth).json()

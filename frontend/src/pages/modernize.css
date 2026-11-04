@@ -1,0 +1,72 @@
+/* Styles used only by the Modernize page. Built from the global design tokens in styles.css. */
+
+.mod-info { position: relative; display: inline-flex; vertical-align: middle; }
+.mod-info-btn {
+  /* 44px touch target; the negative margin keeps the visible row height unchanged */
+  width: 44px; height: 44px; margin: -12px -10px; padding: 0;
+  display: inline-grid; place-items: center;
+  background: none; border: 0; border-radius: 999px; color: var(--text-3); cursor: pointer;
+}
+.mod-info-btn:hover, .mod-info-btn[aria-expanded="true"] { color: var(--text); }
+.mod-info-btn:focus-visible { box-shadow: var(--focus); border-radius: 999px; }
+.mod-info-panel {
+  position: absolute; top: calc(100% + 4px); z-index: 30;
+  width: min(360px, calc(100vw - 32px));
+  background: var(--surface); color: var(--text); border: 1px solid var(--line-strong);
+  border-radius: var(--r-md); box-shadow: var(--shadow-2);
+  padding: 14px 16px; font-size: 13.5px; line-height: 1.45; font-weight: 400; text-align: left;
+}
+.mod-info-panel:focus { outline: none; }
+.mod-info-title { font-weight: 600; font-size: 14.5px; margin-bottom: 8px; }
+.mod-info-sec + .mod-info-sec { margin-top: 8px; }
+.mod-info-h { font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 2px; }
+.mod-info-formula { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.mod-info-formula summary { cursor: pointer; font-weight: 600; color: var(--text-2); min-height: 32px; display: flex; align-items: center; }
+.mod-info-formula ul { margin: 2px 0 0; padding-left: 18px; }
+.mod-info-code { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 6px 8px; margin-top: 6px; font-size: 12.5px; white-space: normal; }
+
+/* Readiness factor rows: [name ⓘ] [weight] [bar] [score + status] */
+.mod-factor-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13.5px; }
+.mod-factor-name { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; }
+.mod-factor-weight { color: var(--text-3); font-size: 12.5px; }
+.mod-factor-score { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.mod-status { font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+.mod-status.good { color: var(--green); }
+.mod-status.prep { color: var(--amber-ink); }
+.mod-status.attention { color: var(--red); }
+.mod-readiness-head { display: flex; align-items: center; gap: 4px; }
+
+/* Page structure: five numbered steps */
+.mod-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.mod-step { margin-bottom: 28px; }
+.mod-step-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.mod-step-n {
+  flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--brand-soft, var(--blue-soft)); color: var(--brand-ink, var(--blue)); font-weight: 600; font-size: 14px;
+}
+.mod-step-text { min-width: 0; }
+.mod-step-title { font-size: 18px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 2px 0 0; }
+.mod-step-desc { color: var(--text-2); margin: 2px 0 0; font-size: 14px; }
+.mod-step-next { color: var(--text-2); font-size: 13.5px; margin: 10px 0 0; }
+.mod-step-placeholder { border: 1px dashed var(--line-strong); border-radius: var(--r-md); padding: 18px 20px; color: var(--text-3); font-size: 14px; }
+.mod-card-head h3 { display: flex; align-items: center; gap: 4px; }
+.mod-card-head { flex-wrap: wrap; }
+.mod-gap { margin: -12px 0 24px; }
+.mod-banner { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.mod-banner > svg { flex: none; margin-top: 2px; }
+.mod-banner-text { flex: 1; min-width: 200px; }
+.mod-field { width: 210px; max-width: 100%; }
+.mod-summary { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0 0 14px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); }
+.mod-summary div { min-width: 0; }
+.mod-summary dt { font-size: 12px; color: var(--text-3); }
+.mod-summary dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.mod-pane-label { margin-bottom: 4px; }
+.mod-evidence { font-weight: 600; color: var(--text-2); }
+.mod-page .mod-info-btn { vertical-align: middle; }
+@media (max-width: 760px) {
+  .mod-page .ddl-pair { grid-template-columns: 1fr; }
+  .mod-page .layer { grid-template-columns: 1fr; gap: 4px; }
+  .mod-page .layer .name { text-align: left; }
+  .mod-field { width: 100%; }
+  .mod-page [data-tour="mod-targets"] { width: 100%; }
+}

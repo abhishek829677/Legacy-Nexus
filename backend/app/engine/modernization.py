@@ -185,19 +185,32 @@ def _readiness(model: dict, insights: dict, rules: list[dict], assessments: list
     o = insights["overview"]
     progs = list(insights["programs"].values())
     avg_cx = sum(p["complexity"] for p in progs) / len(progs) if progs else 0
-    documented = sum(1 for p in model["programs"].values() if p["purpose"]) / max(1, len(model["programs"]))
+    with_purpose = sum(1 for p in model["programs"].values() if p["purpose"])
+    documented = with_purpose / max(1, len(model["programs"]))
     undocumented_ext = sum(1 for i in insights["external_interfaces"] if not i["documented"])
     dynamic_calls = sum(1 for p in model["programs"].values() for c in p["calls"] if c["dynamic"])
+    # "key" and "inputs" only expose the values the scores below are computed from; they never change a score.
     factors = [
-        {"name": "Code complexity", "score": max(0, 100 - avg_cx * 3), "detail": f"Average cyclomatic complexity {avg_cx:.1f}"},
-        {"name": "Rule traceability", "score": 100 if rules else 40, "detail": f"{o['business_rules']} business rules linked to source lines"},
-        {"name": "Self-documentation", "score": round(documented * 100), "detail": f"{round(documented * 100)}% of programs have a purpose header"},
-        {"name": "Interface clarity", "score": max(0, 100 - undocumented_ext * 15), "detail": f"{undocumented_ext} interface(s) used without a specification"},
-        {"name": "Static resolvability", "score": max(0, 100 - dynamic_calls * 20), "detail": f"{dynamic_calls} dynamic CALL(s) that cannot be resolved statically"},
+        {"key": "code_complexity", "name": "Code complexity", "score": max(0, 100 - avg_cx * 3),
+         "detail": f"Average cyclomatic complexity {avg_cx:.1f}",
+         "inputs": {"avg_cyclomatic_complexity": avg_cx, "programs_counted": len(progs)}},
+        {"key": "rule_traceability", "name": "Rule traceability", "score": 100 if rules else 40,
+         "detail": f"{o['business_rules']} business rules linked to source lines",
+         "inputs": {"rules_total": len(rules), "business_rules": o["business_rules"], "technical_rules": o.get("technical_rules")}},
+        {"key": "self_documentation", "name": "Self-documentation", "score": round(documented * 100),
+         "detail": f"{round(documented * 100)}% of programs have a purpose header",
+         "inputs": {"programs_with_purpose": with_purpose, "programs_total": len(model["programs"])}},
+        {"key": "interface_clarity", "name": "Interface clarity", "score": max(0, 100 - undocumented_ext * 15),
+         "detail": f"{undocumented_ext} interface(s) used without a specification",
+         "inputs": {"undocumented_interfaces": undocumented_ext, "total_interfaces": len(insights["external_interfaces"])}},
+        {"key": "static_resolvability", "name": "Static resolvability", "score": max(0, 100 - dynamic_calls * 20),
+         "detail": f"{dynamic_calls} dynamic CALL(s) that cannot be resolved statically",
+         "inputs": {"dynamic_calls": dynamic_calls}},
     ]
     score = round(sum(f["score"] for f in factors) / len(factors))
+    weight = 1 / len(factors)  # the overall score is the plain mean, so every factor weighs the same (0-1 fraction)
     return {"score": score, "level": "Ready" if score >= 75 else "Needs preparation" if score >= 50 else "High effort",
-            "factors": [{**f, "score": round(f["score"])} for f in factors]}
+            "factors": [{**f, "score": round(f["score"]), "weight": weight} for f in factors]}
 
 
 def _convert_ddl(root: Path, model: dict, dialect: str) -> list[dict]:

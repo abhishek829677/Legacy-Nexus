@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { LuArrowDown, LuChevronDown, LuChevronRight, LuDownload, LuFileCode2, LuFolder, LuFolderOpen, LuRadar, LuSearch, LuSparkles } from "react-icons/lu";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { LuArrowDown, LuChevronDown, LuChevronRight, LuDownload, LuFileCode2, LuFolder, LuFolderOpen, LuMaximize, LuRadar, LuSearch, LuSparkles, LuZoomIn, LuZoomOut } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
-import { GraphCanvas } from "../components/GraphCanvas";
+import { GraphCanvas, type GraphHandle } from "../components/GraphCanvas";
 import { useProject } from "../components/ProjectContext";
 import { SymbolSearch } from "../components/SymbolSearch";
 import { usePageTour } from "../components/Tour";
@@ -14,6 +14,7 @@ import { useApi } from "../lib/hooks";
 import type { ImpactExplanation, ImpactItem, ImpactResult, SymbolHit } from "../lib/types";
 
 const SEV_COLOR: Record<string, string> = { High: "#b93a27", Medium: "#c9821b", Low: "#2a8253" };
+const ROOT_COLOR = "#e9a23b";
 
 /** What the current result was run for: a named element or a whole file. */
 type Subject = { kind: "target"; id: string } | { kind: "file"; path: string };
@@ -30,6 +31,7 @@ export function ImpactPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [ai, setAi] = useState<{ busy: boolean; data?: ImpactExplanation; error?: string }>({ busy: false });
+  const canvas = useRef<GraphHandle>(null);
   const { data: examples } = useApi<SymbolHit[]>(`/projects/${pid}/lineage/examples${qs({ limit: 3 })}`);
   usePageTour("impact", IMPACT_TOUR);
 
@@ -77,7 +79,7 @@ export function ImpactPage() {
   const accents = useMemo(() => {
     const m: Record<string, string> = {};
     result?.impacted?.forEach((i) => (m[i.id] = SEV_COLOR[i.severity]));
-    result?.start?.forEach((s) => (m[s.id] = "#e9a23b"));
+    result?.start?.forEach((s) => (m[s.id] = ROOT_COLOR));
     return m;
   }, [result]);
 
@@ -175,9 +177,20 @@ export function ImpactPage() {
                     </div>
                   )}
                   <div className="card" style={{ overflow: "hidden" }}>
-                    <div className="card-head"><h3>Impact graph</h3><span className="subtle">Amber: the change · red/amber/green rings: severity</span></div>
-                    <div className="graph-stage" style={{ height: 420 }}>
-                      <GraphCanvas graph={result.graph!} nodeAccent={accents} />
+                    <div className="card-head"><h3>Impact graph</h3><span className="subtle">{result.graph!.nodes.length} elements · {result.graph!.edges.length} links</span></div>
+                    <div className="graph-stage graph-stage-inline">
+                      <GraphCanvas ref={canvas} graph={result.graph!} nodeAccent={accents} ariaLabel="Impact graph" />
+                      <div className="panel graph-controls" role="group" aria-label="View">
+                        <button className="btn btn-ghost btn-icon btn-sm" title="Zoom in" aria-label="Zoom in" onClick={() => canvas.current?.zoom(1.25)}><LuZoomIn size={16} /></button>
+                        <button className="btn btn-ghost btn-icon btn-sm" title="Zoom out" aria-label="Zoom out" onClick={() => canvas.current?.zoom(0.8)}><LuZoomOut size={16} /></button>
+                        <button className="btn btn-ghost btn-icon btn-sm" title="Fit to screen" aria-label="Fit to screen" onClick={() => canvas.current?.fit()}><LuMaximize size={16} /></button>
+                      </div>
+                      <div className="graph-legend" role="note" aria-label="Ring legend">
+                        <span><i className="lg-ring" style={{ borderColor: ROOT_COLOR }} /> The change</span>
+                        {(["High", "Medium", "Low"] as const).map((s) => (
+                          <span key={s}><i className="lg-ring" style={{ borderColor: SEV_COLOR[s] }} /> {s} severity</span>
+                        ))}
+                      </div>
                     </div>
                   </div>
                   <div className="card">
