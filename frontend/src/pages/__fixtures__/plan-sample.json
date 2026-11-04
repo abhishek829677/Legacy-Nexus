@@ -1,0 +1,506 @@
+{
+ "targets": {
+  "language": "Java 21 + Spring Boot 3",
+  "database": "PostgreSQL 16",
+  "platform": "Microsoft Azure"
+ },
+ "readiness": {
+  "score": 98,
+  "level": "Ready",
+  "factors": [
+   {
+    "key": "code_complexity",
+    "name": "Code complexity",
+    "score": 88,
+    "detail": "Average cyclomatic complexity 4.0",
+    "inputs": {
+     "avg_cyclomatic_complexity": 4.0,
+     "programs_counted": 6
+    },
+    "weight": 0.2
+   },
+   {
+    "key": "rule_traceability",
+    "name": "Rule traceability",
+    "score": 100,
+    "detail": "19 business rules linked to source lines",
+    "inputs": {
+     "rules_total": 21,
+     "business_rules": 19,
+     "technical_rules": 2
+    },
+    "weight": 0.2
+   },
+   {
+    "key": "self_documentation",
+    "name": "Self-documentation",
+    "score": 100,
+    "detail": "100% of programs have a purpose header",
+    "inputs": {
+     "programs_with_purpose": 6,
+     "programs_total": 6
+    },
+    "weight": 0.2
+   },
+   {
+    "key": "interface_clarity",
+    "name": "Interface clarity",
+    "score": 100,
+    "detail": "0 interface(s) used without a specification",
+    "inputs": {
+     "undocumented_interfaces": 0,
+     "total_interfaces": 1
+    },
+    "weight": 0.2
+   },
+   {
+    "key": "static_resolvability",
+    "name": "Static resolvability",
+    "score": 100,
+    "detail": "0 dynamic CALL(s) that cannot be resolved statically",
+    "inputs": {
+     "dynamic_calls": 0
+    },
+    "weight": 0.2
+   }
+  ]
+ },
+ "assessments": [
+  {
+   "program": "ACCOUNT",
+   "file": "cobol/ACCOUNT.CBL",
+   "type": "subprogram",
+   "loc": 80,
+   "complexity": 10,
+   "criticality": "Critical",
+   "fan_in": 1,
+   "fan_out": 2,
+   "business_rules": 10,
+   "strategy": "Refactor",
+   "rationale": "Contains business rules or serves other programs: re-implement as a service with parity tests.",
+   "risk": "Medium",
+   "target_component": "@Service class: AccountService"
+  },
+  {
+   "program": "CUSTOMER",
+   "file": "cobol/CUSTOMER.CBL",
+   "type": "subprogram",
+   "loc": 29,
+   "complexity": 2,
+   "criticality": "High",
+   "fan_in": 1,
+   "fan_out": 0,
+   "business_rules": 2,
+   "strategy": "Refactor",
+   "rationale": "Contains business rules or serves other programs: re-implement as a service with parity tests.",
+   "risk": "Low",
+   "target_component": "@Service class: CustomerService"
+  },
+  {
+   "program": "INTEREST",
+   "file": "cobol/INTEREST.CBL",
+   "type": "subprogram",
+   "loc": 37,
+   "complexity": 4,
+   "criticality": "High",
+   "fan_in": 1,
+   "fan_out": 0,
+   "business_rules": 2,
+   "strategy": "Refactor",
+   "rationale": "Contains business rules or serves other programs: re-implement as a service with parity tests.",
+   "risk": "Low",
+   "target_component": "@Service class: InterestService"
+  },
+  {
+   "program": "LEGACYTX",
+   "file": "cobol/LEGACYTX.CBL",
+   "type": "batch",
+   "loc": 19,
+   "complexity": 1,
+   "criticality": "Unused",
+   "fan_in": 0,
+   "fan_out": 0,
+   "business_rules": 0,
+   "strategy": "Retire",
+   "rationale": "No callers, jobs or APIs reference it. Confirm with operations logs, then decommission.",
+   "risk": "Low",
+   "target_component": "Decommission"
+  },
+  {
+   "program": "PAYMENT",
+   "file": "cobol/PAYMENT.CBL",
+   "type": "batch",
+   "loc": 63,
+   "complexity": 5,
+   "criticality": "High",
+   "fan_in": 0,
+   "fan_out": 1,
+   "business_rules": 4,
+   "strategy": "Refactor",
+   "rationale": "Contains business rules or serves other programs: re-implement as a service with parity tests.",
+   "risk": "Low",
+   "target_component": "Spring Batch job: PaymentJob"
+  },
+  {
+   "program": "REPORT12",
+   "file": "cobol/REPORT12.CBL",
+   "type": "batch",
+   "loc": 45,
+   "complexity": 2,
+   "criticality": "Medium",
+   "fan_in": 0,
+   "fan_out": 0,
+   "business_rules": 1,
+   "strategy": "Replatform",
+   "rationale": "Batch flow with little business logic: move to the target batch framework with minimal change.",
+   "risk": "Low",
+   "target_component": "Spring Batch job: Report12Job"
+  }
+ ],
+ "services": [
+  {
+   "name": "customer-management-service",
+   "capability": "Customer Management",
+   "technology": "Spring Boot microservice",
+   "programs": [
+    "CUSTOMER"
+   ],
+   "owned_tables": [],
+   "endpoints": [
+    "GET /customer  (replaces CALL 'CUSTOMER')",
+    "GET /customers/{customerId}  (existing API_CUSTOMER)"
+   ],
+   "batch_jobs": [],
+   "hosting": "Azure Kubernetes Service (AKS) / Azure Container Apps"
+  },
+  {
+   "name": "interest-billing-service",
+   "capability": "Interest & Billing",
+   "technology": "Spring Boot microservice",
+   "programs": [
+    "INTEREST"
+   ],
+   "owned_tables": [],
+   "endpoints": [
+    "GET /interest  (replaces CALL 'INTEREST')"
+   ],
+   "batch_jobs": [],
+   "hosting": "Azure Kubernetes Service (AKS) / Azure Container Apps"
+  },
+  {
+   "name": "account-processing-service",
+   "capability": "Account Processing",
+   "technology": "Spring Boot microservice",
+   "programs": [
+    "ACCOUNT"
+   ],
+   "owned_tables": [
+    "ACCOUNT_MASTER"
+   ],
+   "endpoints": [
+    "POST /account  (replaces CALL 'ACCOUNT')"
+   ],
+   "batch_jobs": [],
+   "hosting": "Azure Kubernetes Service (AKS) / Azure Container Apps"
+  },
+  {
+   "name": "payments-service",
+   "capability": "Payments",
+   "technology": "Spring Boot microservice",
+   "programs": [
+    "PAYMENT"
+   ],
+   "owned_tables": [
+    "PAYMENT_LEDGER"
+   ],
+   "endpoints": [],
+   "batch_jobs": [
+    "NIGHTLY"
+   ],
+   "hosting": "Azure Kubernetes Service (AKS) / Azure Container Apps"
+  },
+  {
+   "name": "reporting-service",
+   "capability": "Reporting",
+   "technology": "Spring Boot microservice",
+   "programs": [
+    "LEGACYTX",
+    "REPORT12"
+   ],
+   "owned_tables": [],
+   "endpoints": [],
+   "batch_jobs": [
+    "NIGHTLY"
+   ],
+   "hosting": "Azure Kubernetes Service (AKS) / Azure Container Apps"
+  }
+ ],
+ "architecture": {
+  "layers": [
+   {
+    "name": "Channels",
+    "components": [
+     "Web & mobile apps",
+     "Partner integrations"
+    ]
+   },
+   {
+    "name": "API layer",
+    "components": [
+     "Azure API Management"
+    ]
+   },
+   {
+    "name": "Services",
+    "components": [
+     "customer-management-service",
+     "interest-billing-service",
+     "account-processing-service",
+     "payments-service",
+     "reporting-service"
+    ]
+   },
+   {
+    "name": "Batch",
+    "components": [
+     "Spring Batch job Â· MONTHEND",
+     "Spring Batch job Â· NIGHTLY"
+    ]
+   },
+   {
+    "name": "Integration",
+    "components": [
+     "Azure Service Bus",
+     "Azure Blob Storage"
+    ]
+   },
+   {
+    "name": "Data",
+    "components": [
+     "Azure Database for PostgreSQL â Flexible Server"
+    ]
+   },
+   {
+    "name": "Platform",
+    "components": [
+     "Azure Kubernetes Service (AKS) / Azure Container Apps",
+     "Azure Key Vault",
+     "Azure Monitor + Application Insights"
+    ]
+   }
+  ],
+  "mappings": [
+   {
+    "legacy": "COBOL program",
+    "target": "@Service class"
+   },
+   {
+    "legacy": "Paragraph",
+    "target": "private method"
+   },
+   {
+    "legacy": "Copybook",
+    "target": "Java record / DTO"
+   },
+   {
+    "legacy": "COMP-3 packed decimal",
+    "target": "java.math.BigDecimal"
+   },
+   {
+    "legacy": "Embedded SQL (DB2)",
+    "target": "Spring Data JPA repository on PostgreSQL 16"
+   },
+   {
+    "legacy": "JCL batch job",
+    "target": "Spring Batch job"
+   },
+   {
+    "legacy": "Job scheduling",
+    "target": "Azure Batch or Spring Batch on AKS, scheduled by Azure Logic Apps"
+   },
+   {
+    "legacy": "Sequential datasets",
+    "target": "Azure Blob Storage"
+   },
+   {
+    "legacy": "IBM MQ",
+    "target": "Azure Service Bus"
+   },
+   {
+    "legacy": "CICS / API wrapper",
+    "target": "Azure API Management"
+   }
+  ]
+ },
+ "waves": [
+  {
+   "wave": 0,
+   "name": "Retire unused components",
+   "capabilities": [],
+   "programs": [
+    "LEGACYTX"
+   ],
+   "activities": [
+    "Confirm zero usage with SMF / job logs",
+    "Archive source and data",
+    "Remove from schedules"
+   ],
+   "risk": "Low",
+   "rules_to_verify": 0
+  },
+  {
+   "wave": 1,
+   "name": "Modernize Customer Management",
+   "capabilities": [
+    "Customer Management"
+   ],
+   "programs": [
+    "CUSTOMER"
+   ],
+   "tables": [],
+   "activities": [
+    "Generate parity tests from the extracted business rules",
+    "Migrate owned tables (none) with dual-write or CDC",
+    "Implement the service and route traffic through the API layer",
+    "Run old and new side by side and compare outputs before cut-over"
+   ],
+   "risk": "Low",
+   "rules_to_verify": 2
+  },
+  {
+   "wave": 2,
+   "name": "Modernize Interest & Billing",
+   "capabilities": [
+    "Interest & Billing"
+   ],
+   "programs": [
+    "INTEREST"
+   ],
+   "tables": [],
+   "activities": [
+    "Generate parity tests from the extracted business rules",
+    "Migrate owned tables (none) with dual-write or CDC",
+    "Implement the service and route traffic through the API layer",
+    "Run old and new side by side and compare outputs before cut-over"
+   ],
+   "risk": "Low",
+   "rules_to_verify": 2
+  },
+  {
+   "wave": 3,
+   "name": "Modernize Account Processing",
+   "capabilities": [
+    "Account Processing"
+   ],
+   "programs": [
+    "ACCOUNT"
+   ],
+   "tables": [
+    "ACCOUNT_MASTER"
+   ],
+   "activities": [
+    "Generate parity tests from the extracted business rules",
+    "Migrate owned tables (ACCOUNT_MASTER) with dual-write or CDC",
+    "Implement the service and route traffic through the API layer",
+    "Run old and new side by side and compare outputs before cut-over"
+   ],
+   "risk": "Medium",
+   "rules_to_verify": 10
+  },
+  {
+   "wave": 4,
+   "name": "Modernize Payments",
+   "capabilities": [
+    "Payments"
+   ],
+   "programs": [
+    "PAYMENT"
+   ],
+   "tables": [
+    "PAYMENT_LEDGER"
+   ],
+   "activities": [
+    "Generate parity tests from the extracted business rules",
+    "Migrate owned tables (PAYMENT_LEDGER) with dual-write or CDC",
+    "Implement the service and route traffic through the API layer",
+    "Run old and new side by side and compare outputs before cut-over"
+   ],
+   "risk": "Low",
+   "rules_to_verify": 4
+  },
+  {
+   "wave": 5,
+   "name": "Modernize Reporting",
+   "capabilities": [
+    "Reporting"
+   ],
+   "programs": [
+    "REPORT12"
+   ],
+   "tables": [],
+   "activities": [
+    "Generate parity tests from the extracted business rules",
+    "Migrate owned tables (none) with dual-write or CDC",
+    "Implement the service and route traffic through the API layer",
+    "Run old and new side by side and compare outputs before cut-over"
+   ],
+   "risk": "Low",
+   "rules_to_verify": 1
+  }
+ ],
+ "ddl": [
+  {
+   "table": "CUSTOMER_MASTER",
+   "source": "CREATE TABLE CUSTOMER_MASTER (\n    CUSTOMER_ID        CHAR(10)       NOT NULL PRIMARY KEY,\n    CUSTOMER_NAME      VARCHAR(60)    NOT NULL,\n    CUSTOMER_ADDRESS   VARCHAR(80),\n    CUSTOMER_STATUS    CHAR(1)        NOT NULL,\n    OPENED_DATE        DATE,\n    LAST_STATEMENT_DATE DATE\n)",
+   "target": "CREATE TABLE CUSTOMER_MASTER (\n  CUSTOMER_ID CHAR(10) NOT NULL PRIMARY KEY,\n  CUSTOMER_NAME VARCHAR(60) NOT NULL,\n  CUSTOMER_ADDRESS VARCHAR(80),\n  CUSTOMER_STATUS CHAR(1) NOT NULL,\n  OPENED_DATE DATE,\n  LAST_STATEMENT_DATE DATE\n)",
+   "status": "converted",
+   "file": "sql/schema.sql"
+  },
+  {
+   "table": "ACCOUNT_MASTER",
+   "source": "CREATE TABLE ACCOUNT_MASTER (\n    ACCOUNT_ID         CHAR(12)       NOT NULL PRIMARY KEY,\n    CUSTOMER_ID        CHAR(10)       NOT NULL REFERENCES CUSTOMER_MASTER (CUSTOMER_ID),\n    CURRENT_BALANCE    DECIMAL(11,2)  NOT NULL,\n    INTEREST_RATE      DECIMAL(7,4)   NOT NULL,\n    ACCOUNT_STATUS     CHAR(1)        NOT NULL,\n    LAST_ACTIVITY_DATE DATE\n)",
+   "target": "CREATE TABLE ACCOUNT_MASTER (\n  ACCOUNT_ID CHAR(12) NOT NULL PRIMARY KEY,\n  CUSTOMER_ID CHAR(10) NOT NULL REFERENCES CUSTOMER_MASTER (\n    CUSTOMER_ID\n  ),\n  CURRENT_BALANCE DECIMAL(11, 2) NOT NULL,\n  INTEREST_RATE DECIMAL(7, 4) NOT NULL,\n  ACCOUNT_STATUS CHAR(1) NOT NULL,\n  LAST_ACTIVITY_DATE DATE\n)",
+   "status": "converted",
+   "file": "sql/schema.sql"
+  },
+  {
+   "table": "PAYMENT_LEDGER",
+   "source": "CREATE TABLE PAYMENT_LEDGER (\n    PAYMENT_ID         CHAR(16)       NOT NULL PRIMARY KEY,\n    ACCOUNT_ID         CHAR(12)       NOT NULL REFERENCES ACCOUNT_MASTER (ACCOUNT_ID),\n    AMOUNT             DECIMAL(11,2)  NOT NULL,\n    MAIL_ADDRESS       VARCHAR(80),\n    POSTED_DATE        DATE           NOT NULL\n)",
+   "target": "CREATE TABLE PAYMENT_LEDGER (\n  PAYMENT_ID CHAR(16) NOT NULL PRIMARY KEY,\n  ACCOUNT_ID CHAR(12) NOT NULL REFERENCES ACCOUNT_MASTER (\n    ACCOUNT_ID\n  ),\n  AMOUNT DECIMAL(11, 2) NOT NULL,\n  MAIL_ADDRESS VARCHAR(80),\n  POSTED_DATE DATE NOT NULL\n)",
+   "status": "converted",
+   "file": "sql/schema.sql"
+  },
+  {
+   "table": "BRANCH_LEGACY",
+   "source": "CREATE TABLE BRANCH_LEGACY (\n    BRANCH_CODE        CHAR(6)        NOT NULL PRIMARY KEY,\n    BRANCH_NAME        VARCHAR(40),\n    TELEX_NUMBER       VARCHAR(20)\n)",
+   "target": "CREATE TABLE BRANCH_LEGACY (\n  BRANCH_CODE CHAR(6) NOT NULL PRIMARY KEY,\n  BRANCH_NAME VARCHAR(40),\n  TELEX_NUMBER VARCHAR(20)\n)",
+   "status": "converted",
+   "file": "sql/schema.sql"
+  },
+  {
+   "table": "AUDIT_ARCHIVE",
+   "source": "CREATE TABLE AUDIT_ARCHIVE (\n    AUDIT_ID           CHAR(20)       NOT NULL PRIMARY KEY,\n    ARCHIVED_ON        DATE,\n    PAYLOAD            VARCHAR(2000)\n)",
+   "target": "CREATE TABLE AUDIT_ARCHIVE (\n  AUDIT_ID CHAR(20) NOT NULL PRIMARY KEY,\n  ARCHIVED_ON DATE,\n  PAYLOAD VARCHAR(2000)\n)",
+   "status": "converted",
+   "file": "sql/schema.sql"
+  }
+ ],
+ "risks": [
+  {
+   "severity": "Medium",
+   "title": "Packed-decimal arithmetic",
+   "detail": "INTEREST use COMP-3; rounding must be reproduced exactly (use decimal types, never floating point)."
+  }
+ ],
+ "parity_summary": {
+  "scenarios": 32,
+  "rules_covered": 19
+ },
+ "strategy_counts": {
+  "Retire": 1,
+  "Rehost": 0,
+  "Replatform": 1,
+  "Refactor": 4,
+  "Encapsulate": 0
+ }
+}

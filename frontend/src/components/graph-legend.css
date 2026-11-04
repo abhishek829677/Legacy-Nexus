@@ -1,0 +1,9 @@
+/* Type badges shown inside graph boxes, mirrored in legends and side panels. */
+.type-badge {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 4px; border: 1px solid;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; line-height: 1; white-space: nowrap; flex: none;
+}
+.badge-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; flex-basis: 100%; }
+.badge-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.graph-legend .badge-legend + * { margin-top: 2px; }
+.graph-legend { transition: opacity 0.2s; }

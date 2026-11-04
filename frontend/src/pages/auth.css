@@ -1,0 +1,75 @@
+/* Sign-in, sign-up and password pages. Every class is prefixed "ax-". */
+
+.ax { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); min-height: 100vh; background: #fff; }
+
+/* ---------- brand panel (left) ---------- */
+@keyframes ax-drift { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(30px, 40px) scale(1.1); } }
+@keyframes ax-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.ax-brand {
+  position: relative; overflow: hidden; isolation: isolate; display: flex; flex-direction: column;
+  padding: 40px 52px; color: #e2e8f0; background: #0b1220;
+}
+.ax-glow { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
+.ax-glow i { position: absolute; border-radius: 50%; filter: blur(80px); animation: ax-drift 20s ease-in-out infinite; }
+.ax-glow i:nth-child(1) { width: 460px; height: 460px; left: -160px; top: -140px; background: rgba(36, 86, 211, 0.45); }
+.ax-glow i:nth-child(2) { width: 420px; height: 420px; right: -180px; bottom: -160px; background: rgba(109, 79, 224, 0.35); animation-delay: -10s; }
+.ax-grid {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse 80% 70% at 30% 40%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 30% 40%, #000 20%, transparent 75%);
+}
+.ax-logo { display: inline-flex; align-items: center; gap: 10px; color: #fff; font-weight: 700; font-size: 16.5px; text-decoration: none; letter-spacing: -0.01em; width: fit-content; }
+.ax-logo:hover { text-decoration: none; color: #fff; }
+.ax-logo span { color: #93b4ff; }
+.ax-pitch { margin: auto 0; max-width: 440px; animation: ax-rise 0.8s var(--ease-out) 0.1s both; }
+.ax-slide h2 { color: #fff; font-size: 30px; line-height: 1.15; letter-spacing: -0.025em; font-weight: 700; margin-top: 30px; }
+.ax-slide p { color: #94a3b8; font-size: 15.5px; margin-top: 10px; line-height: 1.55; }
+.ax-visual {
+  border-radius: 16px; padding: 20px; min-height: 132px; display: grid; align-content: center; gap: 12px;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+.ax-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ax-chain-step { display: inline-flex; align-items: center; gap: 8px; color: #64748b; }
+.mx-slide.on .ax-chain-step, .mx-slide.on .ax-visual > * { animation: ax-rise 0.55s var(--ease-out) both; }
+.mx-slide.on .ax-visual > *:nth-child(2) { animation-delay: 0.3s; }
+.ax-chip { padding: 7px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); font-family: var(--font-mono); font-size: 12px; color: #e2e8f0; }
+.ax-q { justify-self: end; background: #2456d3; color: #fff; padding: 8px 12px; border-radius: 12px 12px 4px 12px; font-size: 13.5px; font-weight: 500; }
+.ax-a { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; color: #e2e8f0; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.ax-a b { color: #fff; }
+.ax-cite { font-family: var(--font-mono); font-size: 11px; padding: 2px 7px; border-radius: 6px; background: rgba(8, 145, 178, 0.2); color: #67e8f9; }
+.ax-rule { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; color: #e2e8f0; line-height: 1.45; }
+.ax-rule svg { color: #4ade80; flex: none; }
+.ax-rule .ax-cite { flex-basis: 100%; width: fit-content; flex-grow: 0; }
+.ax-foot { display: flex; gap: 8px; align-items: center; color: #64748b; font-size: 13px; }
+
+/* ---------- form side (right) ---------- */
+.ax-form-wrap { display: grid; place-items: center; padding: 40px 24px; background: radial-gradient(700px 400px at 100% 0%, #eef2ff 0%, transparent 60%), #fff; }
+.ax-card { width: min(400px, 100%); animation: ax-rise 0.7s var(--ease-out) both; }
+.ax-card h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.025em; color: #0f172a; }
+.ax-sub { color: #64748b; margin: 8px 0 28px; font-size: 15px; }
+.ax-card .stack > * { animation: ax-rise 0.6s var(--ease-out) both; }
+.ax-card .stack > *:nth-child(2) { animation-delay: 60ms; }
+.ax-card .stack > *:nth-child(3) { animation-delay: 120ms; }
+.ax-card .stack > *:nth-child(4) { animation-delay: 180ms; }
+.ax-card .stack > *:nth-child(n + 5) { animation-delay: 240ms; }
+.ax-card .input { height: 44px; border-radius: 10px; font-size: 15px; }
+.ax-card .input:focus { border-color: #2456d3; box-shadow: 0 0 0 4px rgba(36, 86, 211, 0.12); }
+.ax-card .input-affix .affix { top: 6px; height: 32px; }
+.ax-card .btn-lg { height: 46px; border-radius: 10px; font-size: 15px; box-shadow: 0 8px 20px -10px rgba(36, 86, 211, 0.7); }
+.ax-card .info-box { border-radius: 10px; }
+.ax-switch { margin-top: 26px; padding-top: 20px; border-top: 1px solid #eef0f3; text-align: center; font-size: 14px; color: #64748b; }
+.ax-mobile-logo { display: none; margin-bottom: 20px; width: fit-content; }
+
+@media (max-width: 900px) {
+  .ax { grid-template-columns: 1fr; }
+  .ax-brand { display: none; }
+  .ax-mobile-logo { display: block; }
+  .ax-form-wrap { align-items: start; padding-top: 56px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ax-glow i { animation: none !important; }
+}

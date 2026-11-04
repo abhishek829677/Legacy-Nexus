@@ -1,0 +1,84 @@
+/* Document Q&A: document inventory dropdown, upload tray and drop overlay. */
+
+.inv { position: relative; min-width: 0; }
+.inv-trigger {
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; max-width: min(460px, 70vw); padding: 0 10px 0 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); cursor: pointer;
+  box-shadow: var(--shadow-1); transition: border-color 0.15s, box-shadow 0.2s;
+}
+.inv-trigger:hover, .inv-trigger[aria-expanded="true"] { border-color: var(--line-strong); box-shadow: var(--shadow-2); }
+.inv-trigger > svg:first-child { color: var(--brand, #2456d3); flex: none; }
+.inv-current { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 14px; }
+.inv-count { font-size: 11.5px; font-weight: 600; color: var(--text-3); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; line-height: 18px; flex: none; }
+.inv-chev { color: var(--text-3); flex: none; transition: transform 0.25s var(--ease-out, ease); }
+.inv-trigger[aria-expanded="true"] .inv-chev { transform: rotate(180deg); }
+
+.inv-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: min(480px, calc(100vw - 32px));
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-3);
+  display: flex; flex-direction: column; max-height: min(520px, 70vh); overflow: hidden;
+  animation: mx-pop 0.22s var(--ease-out, ease) both;
+}
+.inv-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; }
+.inv-search { position: relative; margin: 0 10px 6px; }
+.inv-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); }
+.inv-search input { width: 100%; height: 34px; padding: 0 10px 0 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); font-size: 13.5px; }
+.inv-search input:focus { outline: none; border-color: var(--brand, #2456d3); box-shadow: var(--focus); background: var(--surface); }
+.inv-list { list-style: none; margin: 0; padding: 4px 6px 6px; overflow-y: auto; flex: 1; }
+.inv-empty { padding: 18px 10px; color: var(--text-3); text-align: center; font-size: 13.5px; }
+.inv-row { display: flex; align-items: center; gap: 2px; border-radius: 10px; transition: background 0.12s; }
+.inv-row:hover, .inv-row:focus-within { background: var(--surface-2); }
+.inv-row.on { background: var(--brand-soft, #edf2fd); }
+.inv-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 8px; border: 0; background: none; cursor: pointer; text-align: left; color: var(--text); border-radius: 10px; min-height: 48px; }
+.inv-fmt { flex: none; width: 40px; height: 26px; border-radius: 6px; display: grid; place-items: center; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; background: #eef2f7; color: #475467; }
+.inv-fmt.fmt-pdf { background: #fdecea; color: #b42318; }
+.inv-fmt.fmt-docx { background: #e8effd; color: #1d4ed8; }
+.inv-fmt.fmt-md { background: #ecfdf3; color: #067647; }
+.inv-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.inv-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-meta { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-tick { color: var(--brand, #2456d3); flex: none; }
+.inv-status { flex: none; height: 22px; font-size: 11.5px; gap: 4px; }
+.inv-del {
+  flex: none; width: 36px; height: 36px; margin-right: 4px; display: grid; place-items: center; border: 0; border-radius: 8px;
+  background: none; color: var(--text-3); cursor: pointer; opacity: 0.55; transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.inv-row:hover .inv-del, .inv-del:focus-visible { opacity: 1; }
+.inv-del:hover { color: var(--red); background: var(--red-soft); }
+.inv-foot { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface-2); font-size: 12px; }
+
+@keyframes inv-spin { to { transform: rotate(360deg); } }
+.spin { animation: inv-spin 1s linear infinite; }
+
+/* upload tray */
+.tray { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-1); margin-bottom: 10px; overflow: hidden; animation: mx-fade-up 0.3s var(--ease-out, ease) both; }
+.tray-head { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.tray-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; }
+.tray-row + .tray-row { border-top: 1px solid var(--line); }
+.tray-ico { color: var(--text-3); margin-top: 2px; flex: none; }
+.tray-main { flex: 1; min-width: 0; }
+.tray-line { display: flex; gap: 10px; align-items: baseline; }
+.tray-name { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tray-phase { font-size: 12px; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ph-ready .tray-phase { color: var(--green); font-weight: 600; }
+.ph-failed .tray-phase { color: var(--red); font-weight: 600; }
+.tray-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 6px; position: relative; }
+.tray-bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2456d3, #6d4fe0); transition: width 0.25s ease; }
+@keyframes tray-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+.tray-bar.indeterminate > span { width: 40%; animation: tray-slide 1.3s ease-in-out infinite; }
+.tray-sub { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+.tray-err { font-size: 12.5px; color: var(--red); margin-top: 4px; }
+.tray-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.tray-ok { color: var(--green); }
+
+/* drop overlay over the whole page */
+.docqa { position: relative; }
+.drop-overlay {
+  position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; pointer-events: none;
+  background: rgba(36, 86, 211, 0.06); border: 2px dashed var(--brand, #2456d3); border-radius: 16px;
+  animation: mx-fade 0.15s ease both;
+}
+.drop-overlay > div { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px 28px; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-3); color: var(--text); font-weight: 600; }
+.drop-overlay svg { color: var(--brand, #2456d3); }
+
+@media (prefers-reduced-motion: reduce) { .spin, .tray-bar.indeterminate > span { animation: none; } }
