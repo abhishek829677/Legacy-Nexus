@@ -1,0 +1,43 @@
+/* Styles used only by the Files page explorer. Built from the global design tokens in styles.css. */
+
+.ft-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 20px; align-items: start; }
+.ft-panel { position: sticky; top: 0; display: flex; flex-direction: column; max-height: calc(100vh - 120px); min-width: 0; }
+.ft-head { padding: 12px 14px; }
+.ft-search { position: relative; padding: 10px; border-bottom: 1px solid var(--line); }
+.ft-search > svg { position: absolute; left: 22px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.ft-search .input { padding-left: 34px; padding-right: 34px; height: 34px; width: 100%; }
+.ft-clear {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  width: 28px; height: 28px; display: grid; place-items: center;
+  border: 0; background: none; color: var(--text-3); border-radius: var(--r-sm); cursor: pointer;
+}
+.ft-clear:hover { color: var(--text); background: var(--surface-2); }
+.ft-list { overflow-y: auto; padding: 6px; flex: 1; min-height: 120px; }
+.ft-note { padding: 8px; }
+.ft-keys { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 12px; }
+
+.ft-row {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 30px; padding: 4px 8px;
+  border-radius: var(--r-sm); cursor: pointer; font-size: 13px; color: var(--text); user-select: none;
+}
+.ft-row:hover { background: var(--surface-2); }
+.ft-row:focus-visible { box-shadow: var(--focus); outline: none; }
+.ft-row > svg { flex: none; color: var(--text-3); }
+.ft-row.active { background: var(--brand-soft, var(--blue-soft)); color: var(--brand-ink, var(--blue)); font-weight: 600; }
+.ft-row.active > svg { color: inherit; }
+.ft-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ft-count, .ft-lang { flex: none; font-size: 11px; color: var(--text-3); }
+.ft-count { background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; line-height: 16px; }
+
+.ft-code-head { flex-wrap: wrap; }
+.ft-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-width: 0; font-size: 13px; }
+.ft-crumb { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.ft-crumb > svg { color: var(--text-3); flex: none; }
+.ft-crumb-btn { border: 0; background: none; padding: 2px 4px; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: 13px; }
+.ft-crumb-btn:hover { background: var(--surface-2); color: var(--text); text-decoration: underline; }
+
+@media (pointer: coarse) { .ft-row { min-height: 44px; } }
+@media (max-width: 900px) {
+  .ft-layout { grid-template-columns: 1fr; }
+  .ft-panel { position: static; max-height: 50vh; }
+}

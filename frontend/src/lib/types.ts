@@ -158,7 +158,7 @@ export type DocDocument = {
   filename: string;
   format: "pdf" | "docx" | "txt" | "md";
   size_bytes: number;
-  status: "ready" | "failed";
+  status: "ready" | "failed" | "processing";
   error: string | null;
   char_count: number;
   chunk_count: number;

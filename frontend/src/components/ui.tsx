@@ -64,7 +64,7 @@ export function EmptyState({ icon, title, children, action }: { icon?: ReactNode
 export function Loading({ label = "Loading" }: { label?: string }) {
   return (
     <div className="row" style={{ padding: 32, justifyContent: "center", color: "var(--text-2)" }}>
-      <span className="spinner" /> {label}…
+      <span className="spinner" /> <span className="mx-shimmer">{label}…</span>
     </div>
   );
 }

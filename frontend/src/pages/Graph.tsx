@@ -4,6 +4,10 @@ import { AppShell } from "../components/AppShell";
 import { BusinessMap } from "../components/BusinessMap";
 import { GraphCanvas, type GraphHandle } from "../components/GraphCanvas";
 import { BlastRadiusCard, GraphHud } from "../components/GraphInsights";
+import { BadgeLegend, TypeBadge } from "../components/GraphLegend";
+import { BADGE_MEANING, badgeFor } from "../lib/nodeBadge";
+import { GUIDES } from "../lib/guides";
+import { GuideButton } from "../components/PageGuide";
 import { useProject } from "../components/ProjectContext";
 import { SymbolSearch } from "../components/SymbolSearch";
 import { usePageTour } from "../components/Tour";
@@ -120,6 +124,8 @@ function TechnicalGraph({ pid, switcher }: { pid: number; switcher: ReactNode })
             </div>
             <div className="spacer" />
             <div className="panel panel-tools" role="group" aria-label="View">
+              <GuideButton guide={GUIDES.mapTechnical} />
+              <span className="tb-sep" aria-hidden="true" />
               <label className="check"><input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} /> Edge labels</label>
               <span className="tb-sep" aria-hidden="true" />
               <button className="btn btn-ghost btn-icon btn-sm" title="Zoom in" aria-label="Zoom in" onClick={() => canvas.current?.zoom(1.25)}><LuZoomIn size={16} /></button>
@@ -160,6 +166,7 @@ function EdgeLegend({ graph, selected }: { graph: Graph; selected: boolean }) {
         <span key={s.label}><i className="lg-line" style={{ borderTopColor: s.color, borderTopStyle: s.line }} /> {s.label}</span>
       ))}
       {selected && <span><i className="lg-line lg-hl" /> links of the selection</span>}
+      <BadgeLegend graph={graph} />
     </div>
   );
 }
@@ -189,12 +196,15 @@ function NodePanel({ projectId, id, onClose, onFocus }: { projectId: number; id:
     <aside className="side-panel" aria-label="Element details">
       <div className="side-panel-head">
         <div className="row">
-          <TypeDot type={type} />
-          <span className="subtle">{TYPE_LABELS[type] ?? type}</span>
+          {(() => {
+            const b = badgeFor(type, data?.node.language);
+            return <><TypeBadge badge={b} type={type} /><span className="subtle">{BADGE_MEANING[b] ?? TYPE_LABELS[type] ?? type}</span></>;
+          })()}
           <div className="spacer" />
           <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose} aria-label="Close details" title="Close details"><LuX size={16} /></button>
         </div>
         <h2 className="mono">{label}</h2>
+        {typeof data?.node.file === "string" && <div className="subtle mono" style={{ fontSize: 12, marginTop: 2, wordBreak: "break-all" }}>{data.node.file}</div>}
       </div>
       {data && (Boolean(data.node.hub) || Boolean(data.node.unused)) && (
         <div className="row-wrap" style={{ marginTop: 8 }}>

@@ -13,6 +13,10 @@
 .EXAMPLE
   # Lowest cost (free-account sizes) with Azure OpenAI gpt-4o-mini + text-embedding-3-small
   ./deploy.ps1 -ResourceGroup rg-legacynexus-dev -Env dev -AdminEmail admin@contoso.com -Sizing free -WithAzureOpenAI
+
+.EXAMPLE
+  # Free trial subscriptions block cloud builds (ACR Tasks): build with local Docker and push instead
+  ./deploy.ps1 -ResourceGroup rg-legacynexus-dev -Env dev -AdminEmail admin@contoso.com -Sizing free -LocalBuild
 #>
 param(
   [Parameter(Mandatory = $true)] [string] $ResourceGroup,
@@ -23,12 +27,26 @@ param(
   [switch] $AllowSignup,
   [ValidateSet("free", "standard")] [string] $Sizing = "standard",
   [switch] $WithAzureOpenAI,
-  [string] $OpenAILocation = ""
+  [string] $OpenAILocation = "",
+  # Build the images with Docker on this machine and push them, instead of building in Azure (az acr build)
+  [switch] $LocalBuild
 )
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $deploymentName = "legacynexus-$Env"
 $tag = (Get-Date -Format "yyyyMMddHHmm")
+
+# Windows PowerShell does not stop on a failing native command (az, docker), so check each one.
+function Assert-Ok([string] $what) {
+  if ($LASTEXITCODE -ne 0) { throw "$what failed (exit code $LASTEXITCODE)" }
+}
+
+# Check Docker before the long infrastructure step, so a missing Docker fails in seconds, not after 15 minutes.
+if ($LocalBuild) {
+  if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw "-LocalBuild needs Docker Desktop installed" }
+  docker info *> $null
+  if ($LASTEXITCODE -ne 0) { throw "Docker is installed but not running: start Docker Desktop and try again" }
+}
 
 function New-Secret([int] $bytes = 36) {
   $b = New-Object byte[] $bytes
@@ -62,23 +80,44 @@ if ($first) {
   $out = az deployment group create -g $ResourceGroup -n $deploymentName -f (Join-Path $PSScriptRoot "main.bicep") `
     -p $common "dbAdminPassword=$dbPassword" "appSecretKey=$secretKey" "bootstrapAdminPassword=$adminPlain" `
     --query properties.outputs -o json | ConvertFrom-Json
+  Assert-Ok "Infrastructure deployment"
 } else {
   $out = $existing
   $dbPassword = az keyvault secret show --vault-name $out.keyVaultName.value -n db-password --query value -o tsv
+  Assert-Ok "Reading db-password from Key Vault"
 }
 
 $acr = $out.acrName.value
 $server = $out.acrLoginServer.value
-Write-Host "==> Building images in $acr (tag $tag)"
-az acr build -r $acr -t "legacynexus-api:$tag" (Join-Path $root "backend") -o none
-az acr build -r $acr -t "legacynexus-web:$tag" (Join-Path $root "frontend") -o none
 $apiImage = "$server/legacynexus-api:$tag"
 $webImage = "$server/legacynexus-web:$tag"
+
+if ($LocalBuild) {
+  Write-Host "==> Building images locally and pushing to $server (tag $tag)"
+  az acr login -n $acr
+  Assert-Ok "az acr login"
+  # Container Apps runs linux/amd64; say so explicitly in case this machine is ARM.
+  docker build --platform linux/amd64 -t $apiImage (Join-Path $root "backend")
+  Assert-Ok "docker build (api)"
+  docker build --platform linux/amd64 -t $webImage (Join-Path $root "frontend")
+  Assert-Ok "docker build (web)"
+  docker push $apiImage
+  Assert-Ok "docker push (api)"
+  docker push $webImage
+  Assert-Ok "docker push (web)"
+} else {
+  Write-Host "==> Building images in $acr (tag $tag)"
+  az acr build -r $acr -t "legacynexus-api:$tag" (Join-Path $root "backend") -o none
+  Assert-Ok "az acr build (api) - on a free trial subscription use -LocalBuild"
+  az acr build -r $acr -t "legacynexus-web:$tag" (Join-Path $root "frontend") -o none
+  Assert-Ok "az acr build (web)"
+}
 
 Write-Host "==> Rolling out images"
 $out = az deployment group create -g $ResourceGroup -n $deploymentName -f (Join-Path $PSScriptRoot "main.bicep") `
   -p $common "dbAdminPassword=$dbPassword" "apiImage=$apiImage" "webImage=$webImage" `
   --query properties.outputs -o json | ConvertFrom-Json
+Assert-Ok "Rolling out images"
 
 Write-Host ""
 Write-Host "LegacyNexus AI is deployed: $($out.webUrl.value)"

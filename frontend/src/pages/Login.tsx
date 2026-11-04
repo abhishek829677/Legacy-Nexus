@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { LuArrowLeft, LuCircleCheck, LuEye, LuEyeOff, LuLock, LuMail, LuShieldCheck, LuUserPlus } from "react-icons/lu";
+import { LuArrowLeft, LuArrowRight, LuCircleCheck, LuEye, LuEyeOff, LuLock, LuMail, LuShieldCheck, LuUserPlus } from "react-icons/lu";
+import { Slider, type Slide } from "../components/Motion";
 import { Logo } from "../components/ui";
+import "./auth.css";
 import { api } from "../lib/api";
 import { SIGNIN_ROLES, useAuth } from "../lib/auth";
 import { Link, navigate, useSearchParam } from "../lib/router";
@@ -16,32 +18,73 @@ function useAuthOptions() {
   return opts;
 }
 
+const AUTH_SLIDES: Slide[] = [
+  {
+    key: "map",
+    label: "Dependencies, mapped",
+    content: (
+      <div className="ax-slide">
+        <div className="ax-visual ax-chain mx-glow-border">
+          {["JOB NIGHTLY", "PAYMENT", "ACCOUNT_MASTER", "REPORT 12"].map((x, i, a) => (
+            <span key={x} className="ax-chain-step" style={{ animationDelay: `${i * 110}ms` }}>
+              <span className="ax-chip">{x}</span>{i < a.length - 1 && <LuArrowRight size={13} aria-hidden="true" />}
+            </span>
+          ))}
+        </div>
+        <h2>Every dependency, mapped</h2>
+        <p>Programs, tables, jobs and APIs linked straight from the code.</p>
+      </div>
+    ),
+  },
+  {
+    key: "ask",
+    label: "Answers that cite the code",
+    content: (
+      <div className="ax-slide">
+        <div className="ax-visual mx-glow-border">
+          <div className="ax-q">Where is interest calculated?</div>
+          <div className="ax-a">In <b>INTEREST.CBL</b>, using <b>INTEREST_RATE</b>.<span className="ax-cite">INTEREST.CBL:60-64</span></div>
+        </div>
+        <h2>Answers that cite the code</h2>
+        <p>Ask in plain language. Every answer points to the exact lines.</p>
+      </div>
+    ),
+  },
+  {
+    key: "rules",
+    label: "Business rules anyone can read",
+    content: (
+      <div className="ax-slide">
+        <div className="ax-visual mx-glow-border">
+          <div className="ax-rule"><span className="ax-cite">BR-012 · ACCOUNT</span><LuCircleCheck size={15} aria-hidden="true" /> A savings account cannot go below its minimum balance of 500.00.</div>
+        </div>
+        <h2>Business rules anyone can read</h2>
+        <p>Extracted from the code, explained in plain words, ready to review.</p>
+      </div>
+    ),
+  },
+];
+
 /** Two-column layout shared by sign-in, sign-up and password pages. */
 function AuthLayout({ title, subtitle, children, footer }: { title: string; subtitle: string; children: ReactNode; footer?: ReactNode }) {
   return (
-    <div className="auth-grid">
-      <section className="auth-brand">
-        <Link to="/" className="row" style={{ color: "#fff", fontWeight: 600, fontSize: 17, textDecoration: "none" }}>
-          <Logo size={32} /> LegacyNexus AI
-        </Link>
-        <div className="auth-pitch">
-          <h1>Understand any application before you change it.</h1>
-          <p>Every program, table, rule and dependency, mapped from the code and explained in plain language, for engineers and business owners alike.</p>
-          <ul>
-            <li><LuCircleCheck size={16} /> COBOL, Java, .NET, Python, JavaScript and more</li>
-            <li><LuCircleCheck size={16} /> Business rules your teams can read and approve</li>
-            <li><LuCircleCheck size={16} /> Every answer linked to the exact line of code</li>
-          </ul>
+    <div className="ax">
+      <section className="ax-brand" aria-label="About LegacyNexus">
+        <div className="ax-glow" aria-hidden="true"><i /><i /></div>
+        <div className="ax-grid" aria-hidden="true" />
+        <Link to="/" className="ax-logo"><Logo size={30} /> LegacyNexus <span>AI</span></Link>
+        <div className="ax-pitch">
+          <Slider slides={AUTH_SLIDES} label="LegacyNexus highlights" tone="dark" interval={5500} />
         </div>
-        <div className="auth-foot"><LuShieldCheck size={15} /> Your code stays in your environment and is never used to train AI models.</div>
+        <div className="ax-foot"><LuShieldCheck size={15} aria-hidden="true" /> Your code stays in your environment and is never used to train AI models.</div>
       </section>
-      <section className="auth-form-wrap">
-        <div className="auth-card">
-          <div className="auth-mobile-logo"><Logo size={36} /></div>
-          <h1>{title}</h1>
-          <p className="muted" style={{ marginTop: 6, marginBottom: 22 }}>{subtitle}</p>
+      <section className="ax-form-wrap">
+        <div className="ax-card">
+          <Link to="/" className="ax-mobile-logo"><Logo size={34} /></Link>
+          <h1 className="mx-focus-in">{title}</h1>
+          <p className="ax-sub">{subtitle}</p>
           {children}
-          {footer && <div className="auth-switch">{footer}</div>}
+          {footer && <div className="ax-switch">{footer}</div>}
         </div>
       </section>
     </div>
@@ -107,15 +150,11 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [demo, setDemo] = useState<string | null>(null);
   const changed = useSearchParam("reset") === "done";
 
   useEffect(() => {
     if (user) navigate("/projects", true);
   }, [user]);
-  useEffect(() => {
-    api.get<{ demo_login: string | null }>("/health").then((h) => setDemo(h.demo_login)).catch(() => {});
-  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -136,11 +175,6 @@ export function LoginPage() {
       footer={opts.allow_signup && <>New to LegacyNexus? <Link to="/signup">Create an account</Link></>}>
       <form onSubmit={submit} className="stack">
         {changed && <div className="info-box"><LuCircleCheck size={15} style={{ verticalAlign: -2 }} /> Password changed. Sign in with your new password.</div>}
-        {demo && (
-          <div className="info-box" style={{ fontSize: 13 }}>
-            Demo environment: <b className="mono" style={{ cursor: "pointer" }} onClick={() => setEmail(demo)}>{demo}</b> (password in <span className="mono">backend/.env</span>).
-          </div>
-        )}
         <div className="field">
           <label htmlFor="email">Work email</label>
           <input id="email" className="input" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />

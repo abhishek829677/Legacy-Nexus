@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   LuBookOpen, LuChevronUp, LuCircleHelp, LuFileCode2, LuFileText, LuFolderKanban, LuGitFork, LuLayoutDashboard,
-  LuLogOut, LuMessageSquareText, LuPanelLeftClose, LuPanelLeftOpen, LuRadar, LuRocket, LuScale, LuSettings, LuUserRound, LuWorkflow,
+  LuLogOut, LuMessageSquareText, LuPanelLeftClose, LuPanelLeftOpen, LuRadar, LuRocket, LuScale, LuSearch, LuSettings, LuUserRound, LuWorkflow,
 } from "react-icons/lu";
+import { CommandPalette, isMac } from "./CommandPalette";
 import { useAuth } from "../lib/auth";
 import { initials } from "../lib/format";
 import { Link, navigate, useLocation } from "../lib/router";
@@ -99,6 +100,8 @@ export function AppShell({ title, actions, children, wide }: { title?: ReactNode
         </div>
       </aside>
       <main className="main">
+        <div className="mx-route-bar" key={path} aria-hidden="true" />
+        <CommandPalette pages={PROJECT_PAGES} projectId={project?.status === "ready" ? project.id : undefined} onToggleMenu={toggle} onGuide={guideAvailable ? replay : undefined} />
         <header className="topbar">
           <button className="btn btn-sm btn-ghost nav-toggle" onClick={toggle} aria-label="Show or hide the menu"
             title={closed ? "Show menu (Ctrl+B)" : "Hide menu (Ctrl+B)"}>
@@ -116,6 +119,11 @@ export function AppShell({ title, actions, children, wide }: { title?: ReactNode
             )}
           </nav>
           <div className="spacer" />
+          <button type="button" className="cp-trigger" onClick={() => window.dispatchEvent(new Event("lnx:palette"))} aria-label="Quick search (Ctrl+K)" aria-keyshortcuts="Control+K Meta+K">
+            <LuSearch size={15} aria-hidden="true" />
+            <span className="cp-t-label">Search or jump to…</span>
+            <kbd>{isMac() ? "⌘K" : "Ctrl K"}</kbd>
+          </button>
           {actions}
           {guideAvailable && (
             <button className="btn btn-sm btn-ghost" onClick={replay} data-tour="nav-guide" title="Show the guide for this page">

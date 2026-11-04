@@ -120,12 +120,18 @@ def _title(page: int | None, section: str | None) -> str:
 
 # ------------------------------------------------------------------ ingestion
 
-def ingest(db: Session, ddb: Session, user: User, filename: str, raw: bytes) -> DocQADocument:
-    """Extract, chunk and (if an embedding model is configured) embed a document, then persist it.
+@dataclass
+class Prepared:
+    fmt: str
+    extraction: doc_extract.Extraction
+    chunks: list[dict]
+    truncated: bool
+    vectors: list | None
+    model_key: str
 
-    ``db`` is the main database (embedding settings), ``ddb`` the Document Q&A database (the document).
-    Raises :class:`doc_extract.ExtractionError` for unsupported/empty/unreadable documents.
-    """
+
+def _prepare(db: Session, filename: str, raw: bytes) -> Prepared:
+    """Extract, chunk and (if an embedding model is configured) embed. Shared by both upload paths."""
     s = get_settings()
     fmt = doc_extract.format_for(filename)
     if fmt is None:
@@ -139,6 +145,9 @@ def ingest(db: Session, ddb: Session, user: User, filename: str, raw: bytes) -> 
 
     vectors, model_key = None, ""
     cfg = semantic.active_config(db)
+    # End the settings read before the slow embedding call: on SQLite an open read transaction blocks
+    # every writer (sign-ins, audit log, other uploads) for as long as it stays open.
+    db.commit()
     if cfg is not None:
         try:
             vectors = embed_texts(cfg, [c["text"] for c in chunks], kind="document")
@@ -146,23 +155,142 @@ def ingest(db: Session, ddb: Session, user: User, filename: str, raw: bytes) -> 
         except EmbeddingError as exc:
             # Embeddings are optional; fall back to keyword retrieval but keep the document usable.
             log.warning("Embedding the document failed, keyword search only: %s", exc)
+    return Prepared(fmt, extraction, chunks, truncated, vectors, model_key)
 
-    doc = DocQADocument(
-        owner_id=user.id, filename=filename[:512], format=fmt, size_bytes=len(raw), status="ready",
-        char_count=extraction.char_count, chunk_count=len(chunks), page_count=extraction.page_count,
-        truncated=truncated, embedded=False, model_key=model_key, chunks=chunks,
-    )
-    ddb.add(doc)
+
+def _apply(ddb: Session, doc: DocQADocument, p: Prepared) -> None:
+    """Store prepared results on a document row and mark it ready."""
+    doc.format, doc.status, doc.error = p.fmt, "ready", None
+    doc.char_count, doc.chunk_count, doc.page_count = p.extraction.char_count, len(p.chunks), p.extraction.page_count
+    doc.truncated, doc.embedded, doc.model_key, doc.chunks = p.truncated, False, p.model_key, p.chunks
+    flag_modified(doc, "chunks")
     ddb.commit()
-    if vectors:
+    if p.vectors:
         try:
-            get_store(VECTORS).save(doc.id, model_key, [c["id"] for c in chunks], vectors)
+            get_store(VECTORS).save(doc.id, p.model_key, [c["id"] for c in p.chunks], p.vectors)
             doc.embedded = True
         except Exception as exc:  # vector store down: the document still works with keyword search
             log.warning("Saving document vectors failed, keyword search only: %s", exc)
         ddb.commit()
+
+
+def ingest(db: Session, ddb: Session, user: User, filename: str, raw: bytes) -> DocQADocument:
+    """Extract, chunk and (if an embedding model is configured) embed a document, then persist it.
+
+    ``db`` is the main database (embedding settings), ``ddb`` the Document Q&A database (the document).
+    Raises :class:`doc_extract.ExtractionError` for unsupported/empty/unreadable documents.
+    """
+    p = _prepare(db, filename, raw)
+    doc = DocQADocument(owner_id=user.id, filename=filename[:512], format=p.fmt, size_bytes=len(raw), status="ready")
+    ddb.add(doc)
+    ddb.commit()
+    _apply(ddb, doc, p)
     ddb.refresh(doc)
     return doc
+
+
+# ------------------------------------------------------------------ background processing (chunked uploads)
+
+PROCESSING = "processing"
+INTERRUPTED = "Processing was interrupted (for example by a server restart). Upload the document again."
+PROCESSING_TIMEOUT = 60 * 60  # seconds before a document stuck in "processing" is reported as failed
+RECOVERY_GRACE = 60  # seconds a new document may wait for its parked file before it counts as lost
+
+
+def create_pending(ddb: Session, user: User, filename: str, size: int) -> DocQADocument:
+    """Register an uploaded document that will be read and indexed in the background."""
+    fmt = doc_extract.format_for(filename) or "txt"
+    doc = DocQADocument(owner_id=user.id, filename=filename[:512], format=fmt, size_bytes=size, status=PROCESSING)
+    ddb.add(doc)
+    ddb.commit()
+    ddb.refresh(doc)
+    return doc
+
+
+def process_pending(document_id: int) -> None:
+    """Read, chunk and embed a parked upload, then mark the document ready or failed.
+
+    Runs as a background task (or a recovery thread). Holds the document's work lock for the whole job, so a
+    second worker never processes the same document, and a crashed worker is detected by its released lock.
+    Opens its own database sessions and removes the parked file when done.
+    """
+    from app.database import DocSessionLocal, SessionLocal
+    from app.services import doc_uploads
+
+    folder = doc_uploads.pending_dir(document_id)
+    lock = doc_uploads.WorkLock(folder)
+    if not lock.acquire():  # another worker is already on it
+        return
+    db, ddb = SessionLocal(), DocSessionLocal()
+    finished = False
+    try:
+        doc = ddb.get(DocQADocument, document_id)
+        file = folder / "document.bin"
+        if doc is None or doc.status != PROCESSING or not file.is_file():  # deleted, or already handled
+            finished = True
+            return
+        filename = doc_uploads.parked_filename(document_id) or doc.filename
+        ddb.commit()  # end the read transaction before the long extraction/embedding step
+        try:
+            p = _prepare(db, filename, file.read_bytes())
+            doc = ddb.get(DocQADocument, document_id)
+            if doc is not None:  # still there after the slow part
+                _apply(ddb, doc, p)
+        except doc_extract.ExtractionError as exc:
+            doc = ddb.get(DocQADocument, document_id)
+            if doc is not None:
+                doc.status, doc.error = "failed", str(exc)
+                ddb.commit()
+        except Exception:  # never leave a document spinning forever
+            log.exception("Processing document %s failed", document_id)
+            ddb.rollback()
+            doc = ddb.get(DocQADocument, document_id)
+            if doc is not None:
+                doc.status, doc.error = "failed", "The document could not be processed. Try uploading it again."
+                ddb.commit()
+        finished = True
+    finally:
+        db.close()
+        ddb.close()
+        lock.release()
+        if finished:
+            doc_uploads.discard_folder(folder)
+
+
+def recover(ddb: Session, docs: list[DocQADocument]) -> None:
+    """Restart or fail documents whose worker is gone (server restart, crash, dev auto-reload).
+
+    For each document still "processing": if its work lock is held, a worker is busy — leave it. If the lock
+    is free and the parked file exists, start processing again in a background thread. If the file is gone,
+    report the document as failed. Documents processing for longer than PROCESSING_TIMEOUT are failed too.
+    """
+    import threading
+    from datetime import datetime, timezone
+
+    from app.services import doc_uploads
+
+    now = datetime.now(timezone.utc)
+    changed = False
+    for d in docs:
+        if d.status != PROCESSING:
+            continue
+        folder = doc_uploads.pending_dir(d.id)
+        lock = doc_uploads.WorkLock(folder)
+        busy = (folder / "worker.lock").exists() and not lock.is_free()
+        updated = d.updated_at if d.updated_at is None or d.updated_at.tzinfo else d.updated_at.replace(tzinfo=timezone.utc)
+        age = (now - updated).total_seconds() if updated is not None else 0
+        too_old = age > PROCESSING_TIMEOUT
+        if busy and not too_old:
+            continue
+        if not too_old and (folder / "document.bin").is_file():
+            threading.Thread(target=process_pending, args=(d.id,), daemon=True, name=f"docqa-recover-{d.id}").start()
+            continue
+        if not too_old and age < RECOVERY_GRACE:  # just created: its file may not be parked yet
+            continue
+        d.status, d.error = "failed", INTERRUPTED
+        changed = True
+    if changed:
+        ddb.commit()
 
 
 def delete_document(ddb: Session, doc: DocQADocument) -> None:

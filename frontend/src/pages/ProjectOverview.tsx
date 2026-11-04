@@ -4,6 +4,7 @@ import {
   LuPlay, LuPlug, LuRefreshCw, LuRocket, LuScale, LuShieldAlert, LuTimer, LuTriangleAlert, LuUpload,
 } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
+import { CountUp } from "../components/Motion";
 import { ApplicationMapCard, CodeCard, InventoryCard, ProgramsCard, RepositoryCard, type RepoFile } from "../components/DashboardPanels";
 import { ChangesStrip, DataHotspotsCard, SensitiveDataCard } from "../components/OverviewExtras";
 import { useProject } from "../components/ProjectContext";
@@ -201,7 +202,7 @@ function ReadyOverview() {
             <h2 style={{ marginBottom: 12 }}>Recommended next steps</h2>
             <div className="launch">
               {nextSteps(data.overview as unknown as Record<string, number>).map((s) => (
-                <button key={s.title} className="launch-btn" onClick={() => navigate(`${base}/${s.path}`)}>
+                <button key={s.title} className="launch-btn mx-spot mx-float" onClick={() => navigate(`${base}/${s.path}`)}>
                   <span className="ico" style={s.urgent ? { background: "var(--amber-soft)", color: "var(--amber-ink)" } : undefined}><s.icon size={18} /></span>
                   <b>{s.title}</b>
                   <span>{s.text}</span>
@@ -265,9 +266,9 @@ const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) 
 
 function Kpi({ icon: Icon, tone, k, v, hint }: { icon: typeof LuFiles; tone: string; k: string; v: number; hint: string }) {
   return (
-    <div className={`kpi kpi-${tone}`}>
+    <div className={`kpi kpi-${tone} mx-spot`}>
       <div className="kpi-top"><span className="kpi-ico"><Icon size={18} /></span><span className="kpi-k">{k}</span></div>
-      <div className="kpi-v">{fmtNumber(v)}</div>
+      <div className="kpi-v"><CountUp value={v} /></div>
       <div className="kpi-hint">{hint}</div>
     </div>
   );

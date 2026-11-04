@@ -2,6 +2,7 @@ import cytoscape, { type Core, type ElementDefinition, type NodeSingular } from 
 import ELK from "elkjs/lib/elk.bundled.js";
 import { forwardRef, useEffect, useImperativeHandle, useRef, type KeyboardEvent } from "react";
 import { TYPE_COLORS } from "../lib/format";
+import { BADGE_MEANING, badgeFor } from "../lib/nodeBadge";
 import type { Graph } from "../lib/types";
 
 const elk = new ELK();
@@ -31,9 +32,34 @@ const SELECT_INK = "#7a4d0c";
 const EDGE = "#9aa8ba";
 const EDGE_HOVER = "#5f6f86";
 
-function nodeSize(label: string, dense?: boolean) {
-  const w = Math.min(260, Math.max(dense ? 76 : 100, label.length * (dense ? 6.8 : 7.8) + 30));
+/** Width of the type badge drawn at the left of a box ("COBOL", "TABLE"…). */
+function badgeWidth(badge: string, dense?: boolean) {
+  return Math.round(badge.length * (dense ? 5.6 : 6.2) + (dense ? 10 : 12));
+}
+
+function nodeSize(label: string, dense?: boolean, badge = "") {
+  const extra = badge ? badgeWidth(badge, dense) + 8 : 0;
+  const w = Math.min(260 + extra, Math.max(dense ? 76 : 100, label.length * (dense ? 6.8 : 7.8) + 30) + extra);
   return { width: w, height: dense ? 30 : 38 };
+}
+
+/** The badge as a small SVG image, cached per text and colour. */
+const badgeCache = new Map<string, string>();
+function badgeImage(badge: string, color: string, dense?: boolean) {
+  const key = `${badge}|${color}|${dense ? 1 : 0}`;
+  let uri = badgeCache.get(key);
+  if (!uri) {
+    const w = badgeWidth(badge, dense);
+    const h = dense ? 15 : 17;
+    const fs = dense ? 8.5 : 9.5;
+    const safe = badge.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+      + `<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="4" fill="${color}" fill-opacity="0.12" stroke="${color}" stroke-opacity="0.35"/>`
+      + `<text x="50%" y="50%" dy="0.35em" text-anchor="middle" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="${fs}" font-weight="700" letter-spacing="0.4" fill="${color}">${safe}</text></svg>`;
+    uri = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    badgeCache.set(key, uri);
+  }
+  return uri;
 }
 
 /** Read a design token so the canvas uses the same type and text colours as the page. */
@@ -96,17 +122,27 @@ export const GraphCanvas = forwardRef<GraphHandle, Props>(function GraphCanvas(
     const sans = token("--font-sans", "IBM Plex Sans, system-ui, sans-serif");
     const mono = token("--font-mono", "IBM Plex Mono, monospace");
 
+    const badges = new Map(graph.nodes.map((n) => [n.id, typeof n.badge === "string" ? n.badge : badgeFor(n.type, n.language)]));
     const elements: ElementDefinition[] = [
-      ...graph.nodes.map((n) => ({
-        data: {
-          id: n.id,
-          label: n.label,
-          type: n.type,
-          color: TYPE_COLORS[n.type] ?? "#6f7c8e",
-          accent: nodeAccent?.[n.id] ?? "",
-          ...nodeSize(n.label, dense),
-        },
-      })),
+      ...graph.nodes.map((n) => {
+        const color = TYPE_COLORS[n.type] ?? "#6f7c8e";
+        const badge = badges.get(n.id) ?? "";
+        const size = nodeSize(n.label, dense, badge);
+        const shift = badge ? (badgeWidth(badge, dense) + 8) / 2 : 0;
+        return {
+          data: {
+            id: n.id,
+            label: n.label,
+            type: n.type,
+            color,
+            accent: nodeAccent?.[n.id] ?? "",
+            badge: badge ? badgeImage(badge, color, dense) : "",
+            badgeW: badge ? badgeWidth(badge, dense) : 0,
+            shift,
+            ...size,
+          },
+        };
+      }),
       ...edges.map((e, i) => ({
         data: {
           id: `e${i}`,
@@ -142,8 +178,23 @@ export const GraphCanvas = forwardRef<GraphHandle, Props>(function GraphCanvas(
             "text-valign": "center",
             "text-halign": "center",
             "text-wrap": "ellipsis",
-            "text-max-width": (n: NodeSingular) => `${Math.max(40, Number(n.data("width")) - 16)}px`,
+            "text-max-width": (n: NodeSingular) => `${Math.max(40, Number(n.data("width")) - 16 - Number(n.data("shift")) * 2)}px`,
+            "text-margin-x": (n: NodeSingular) => Number(n.data("shift")),
             "overlay-opacity": 0,
+          },
+        },
+        // Type badge ("COBOL", "TABLE"…) at the left of every box that has one.
+        {
+          selector: "node[badge != '']",
+          style: {
+            "background-image": "data(badge)",
+            "background-fit": "none",
+            "background-clip": "none",
+            "background-width": (n: NodeSingular) => `${Number(n.data("badgeW"))}px`,
+            "background-height": dense ? "15px" : "17px",
+            "background-position-x": "8px",
+            "background-position-y": "50%",
+            "background-image-containment": "over",
           },
         },
         { selector: "node[type = 'job']", style: { "background-color": "#ece9fa" } },
@@ -212,7 +263,9 @@ export const GraphCanvas = forwardRef<GraphHandle, Props>(function GraphCanvas(
         n.connectedEdges().not(".hl").addClass("hover-edge");
       });
       container.style.cursor = "pointer";
-      container.title = n.data("label"); // full name when the box truncates it
+      // Full name when the box truncates it, plus what kind of thing it is.
+      const badge = badges.get(n.id());
+      container.title = badge ? `${n.data("label")} · ${BADGE_MEANING[badge] ?? badge}` : n.data("label");
     });
     cy.on("mouseout", "node", (evt) => {
       const n = evt.target as NodeSingular;
@@ -241,7 +294,7 @@ export const GraphCanvas = forwardRef<GraphHandle, Props>(function GraphCanvas(
           "elk.separateConnectedComponents": "true",
           "elk.spacing.componentComponent": "50",
         },
-        children: graph.nodes.map((n) => ({ id: n.id, ...nodeSize(n.label, dense) })),
+        children: graph.nodes.map((n) => ({ id: n.id, ...nodeSize(n.label, dense, badges.get(n.id) ?? "") })),
         edges: edges.map((e, i) => ({ id: `e${i}`, sources: [e.source], targets: [e.target] })),
       })
       .then((res) => {

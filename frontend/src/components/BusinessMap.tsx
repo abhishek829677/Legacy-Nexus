@@ -5,6 +5,10 @@ import { navigate } from "../lib/router";
 import type { BlastRadius, Graph } from "../lib/types";
 import { GraphCanvas, type GraphHandle } from "./GraphCanvas";
 import { BlastRadiusCard } from "./GraphInsights";
+import { BadgeLegend, TypeBadge } from "./GraphLegend";
+import { BADGE_MEANING, badgeFor } from "../lib/nodeBadge";
+import { GUIDES } from "../lib/guides";
+import { GuideButton } from "./PageGuide";
 import { useProject } from "./ProjectContext";
 import { usePageTour } from "./Tour";
 import { BUSINESS_MAP_TOUR } from "./tours";
@@ -23,10 +27,6 @@ const ROLE_TYPE: Record<string, string> = {
   Configuration: "config", "Shared record layout": "copybook", Document: "field", "Database table": "table",
   "Data file / report": "dataset", "Outside system": "external", "Decided at runtime": "unresolved",
 };
-const LEGEND = [
-  ["program", "Program"], ["job", "Batch job / script"], ["table", "Database table"], ["dataset", "Data file / report"],
-  ["api", "API"], ["external", "Outside system"], ["unresolved", "Decided at runtime"],
-];
 
 /** Blast radius of the main program in a file (the technical graph is keyed by program, not file). */
 function FileBlast({ projectId, component, onPick }: { projectId: number; component: string; onPick: (id: string) => void }) {
@@ -78,7 +78,7 @@ export function BusinessMap({ projectId }: { projectId: number }) {
     const ids = new Set(visible.map((n) => n.id));
     return {
       nodes: visible.map((n) => ({
-        id: n.id, label: n.label, type: ROLE_TYPE[n.role] ?? "external",
+        id: n.id, label: n.label, type: ROLE_TYPE[n.role] ?? "external", language: n.language,
         criticality: n.criticality ?? undefined, hub: n.criticality === "Critical", unused: n.criticality === "Unused",
       })),
       edges: data.links.filter((l) => ids.has(l.source) && ids.has(l.target)).map((l) => ({ source: l.source, target: l.target, type: l.type, how: l.verb })),
@@ -164,6 +164,8 @@ export function BusinessMap({ projectId }: { projectId: number }) {
           </div>
           <div className="spacer" />
           <div className="panel panel-tools" role="group" aria-label="View">
+            <GuideButton guide={GUIDES.mapBusiness} />
+            <span className="tb-sep" aria-hidden="true" />
             <button className="btn btn-ghost btn-icon btn-sm" title="Zoom in" aria-label="Zoom in" onClick={() => canvas.current?.zoom(1.25)}><LuZoomIn size={16} /></button>
             <button className="btn btn-ghost btn-icon btn-sm" title="Zoom out" aria-label="Zoom out" onClick={() => canvas.current?.zoom(0.8)}><LuZoomOut size={16} /></button>
             <button className="btn btn-ghost btn-icon btn-sm" title="Fit to screen" aria-label="Fit to screen" onClick={() => canvas.current?.fit()}><LuMaximize size={16} /></button>
@@ -180,16 +182,19 @@ export function BusinessMap({ projectId }: { projectId: number }) {
             {" · "}<b style={{ color: "var(--red)" }}>{graph.nodes.filter((n) => n.hub).length}</b> critical
             {" · "}<b style={{ color: "var(--amber-ink)" }}>{graph.nodes.filter((n) => n.unused).length}</b> unused
           </span>
-          {LEGEND.map(([t, label]) => <span key={t}><span className="dot" style={{ background: `var(--t-${t})` }} /> {label}</span>)}
           <span className="subtle">Click any box to see what it does in plain words.</span>
+          <BadgeLegend graph={graph} title="What each box is" />
         </div>
       </div>
 
       {box && (
         <aside className="side-panel">
           <div className="row" style={{ marginBottom: 10 }}>
-            <span className="dot" style={{ background: `var(--t-${ROLE_TYPE[box.role] ?? "external"})` }} />
-            <span className="subtle">{box.role}</span>
+            {(() => {
+              const t = ROLE_TYPE[box.role] ?? "external";
+              const b = badgeFor(t, box.language);
+              return <><TypeBadge badge={b} type={t} /><span className="subtle">{BADGE_MEANING[b] ?? box.role}</span></>;
+            })()}
             {box.capability && <span className="cap-chip">{box.capability}</span>}
             <div className="spacer" />
             <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setSelected(null)} aria-label="Close"><LuX size={16} /></button>

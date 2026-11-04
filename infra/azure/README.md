@@ -76,6 +76,9 @@ Service Bus Basic. `-WithAzureOpenAI` creates an Azure OpenAI account with `gpt-
 `text-embedding-3-small` deployments (use `-OpenAILocation` if your region lacks them) and stores its key in
 Key Vault. Without it, pick any provider in Settings → AI models.
 
+Free trial subscriptions block cloud builds (`az acr build`). Add `-LocalBuild` to build both images with
+Docker Desktop on your machine and push them to the registry instead (Docker must be running).
+
 The first run creates everything (about 15 minutes), builds both images in Azure Container Registry, and prints
 the URL. Later runs build new images and roll them out; secrets are reused from Key Vault and never rotated.
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { LuDatabase, LuFolderOpen, LuPlay, LuPlus, LuRefreshCw, LuSparkles, LuTrash2, LuUpload } from "react-icons/lu";
+import { LuDatabase, LuFileText, LuFolderOpen, LuMessageSquareText, LuPlay, LuPlus, LuRefreshCw, LuSparkles, LuTrash2, LuUpload, LuX } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
 import { usePageTour } from "../components/Tour";
 import { DASHBOARD_TOUR } from "../components/tours";
@@ -8,6 +8,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fmtDate, fmtNumber } from "../lib/format";
 import { useApi } from "../lib/hooks";
+import { DOC_ACCEPT, DOC_TYPES_LABEL, isDocFile, uploadDocuments, type DocUploadResult } from "../lib/docUpload";
 import { navigate } from "../lib/router";
 import type { Project } from "../lib/types";
 
@@ -16,6 +17,7 @@ export function ProjectsPage() {
   const toast = useToast();
   const { data: projects, loading, reload } = useApi<Project[]>("/projects");
   const [creating, setCreating] = useState(false);
+  const [uploadingDocs, setUploadingDocs] = useState(false);
   const [busySample, setBusySample] = useState(false);
   const welcomed = Boolean(user?.preferences?.welcome_seen);
   const canWrite = user?.role === "admin" || user?.role === "analyst";
@@ -59,16 +61,21 @@ export function ProjectsPage() {
           <h1>Applications</h1>
           <p>Each project is one legacy application: its sources, its knowledge graph and everything derived from it.</p>
         </div>
-        {canWrite && (
-          <div className="row">
+        <div className="row-wrap">
+          {canWrite && (
             <button className="btn" onClick={loadSample} disabled={busySample} data-tour="load-sample">
               {busySample ? <span className="spinner" /> : <LuSparkles size={16} />} Load sample application
             </button>
+          )}
+          <button className="btn" onClick={() => setUploadingDocs(true)} data-tour="upload-docs">
+            <LuFileText size={16} /> Upload documents
+          </button>
+          {canWrite && (
             <button className="btn btn-primary" onClick={() => setCreating(true)} data-tour="new-project">
               <LuPlus size={16} /> New project
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="card" data-tour="project-list">
@@ -114,6 +121,7 @@ export function ProjectsPage() {
       </div>
 
       {creating && <NewProjectModal onClose={() => setCreating(false)} onCreated={(id) => navigate(`/projects/${id}`)} />}
+      {uploadingDocs && <UploadDocumentsModal onClose={() => setUploadingDocs(false)} />}
       {user && !welcomed && canWrite && <WelcomeModal onClose={() => updatePreferences({ welcome_seen: true }).catch(() => {})} onSample={async () => {
         await updatePreferences({ welcome_seen: true }).catch(() => {});
         loadSample();
@@ -168,6 +176,7 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [docs, setDocs] = useState<File[]>([]);
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -194,7 +203,12 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
       files.forEach((f) => form.append("files", f, (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name));
       await api.upload(`/projects/${p.id}/files`, form);
       await api.post(`/projects/${p.id}/analyze`);
-      toast("Upload complete. Analysis is running.");
+      // Documents go to Document Q&A; a failure here must not undo the project that was just created.
+      const docResult = docs.length ? await uploadDocuments(docs) : null;
+      toast(docResult?.uploaded.length
+        ? `Code uploaded and analysis is running. ${docSummary(docResult)}`
+        : "Upload complete. Analysis is running.");
+      if (docResult?.failed.length) toast(docFailures(docResult), true);
       onCreated(p.id);
     } catch (e) {
       setError((e as Error).message);
@@ -222,6 +236,7 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
           <label htmlFor="pdesc">Description (optional)</label>
           <input id="pdesc" className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this application does, who owns it" />
         </div>
+        <div className="label" style={{ marginBottom: -6 }}>Source code</div>
         <div
           className={`dropzone ${over ? "over" : ""}`}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }}
@@ -247,8 +262,100 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
             </>
           )}
         </div>
+        <div className="field" style={{ marginTop: 4 }}>
+          <div className="label">Documents for Document Q&amp;A <span className="subtle" style={{ fontWeight: 400 }}>(optional)</span></div>
+          <span className="hint" style={{ marginTop: 0, marginBottom: 6 }}>Specifications, runbooks or manuals. You can ask questions about them in Document Q&amp;A.</span>
+          <DocDropzone files={docs} onChange={setDocs} compact />
+        </div>
         {error && <div className="error-box">{error}</div>}
       </div>
+    </Modal>
+  );
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const docSummary = (r: DocUploadResult) => `${plural(r.uploaded.length, "document", "documents")} added to Document Q&A.`;
+const docFailures = (r: DocUploadResult) =>
+  `${plural(r.failed.length, "document was", "documents were")} not uploaded: ${r.failed.map((f) => `${f.name} (${f.message})`).join("; ")}`;
+
+/** Drop area for Document Q&A files, with a removable list of what was picked. */
+function DocDropzone({ files, onChange, compact }: { files: File[]; onChange: (f: File[]) => void; compact?: boolean }) {
+  const [over, setOver] = useState(false);
+  const [rejected, setRejected] = useState<string[]>([]);
+  const input = useRef<HTMLInputElement>(null);
+  const add = (list: FileList | null) => {
+    if (!list) return;
+    const picked = Array.from(list);
+    setRejected(picked.filter((f) => !isDocFile(f.name)).map((f) => f.name));
+    const ok = picked.filter((f) => isDocFile(f.name) && !files.some((x) => x.name === f.name && x.size === f.size));
+    onChange([...files, ...ok]);
+  };
+  return (
+    <div className="stack-sm">
+      <div
+        className={`dropzone ${over ? "over" : ""}`}
+        style={compact ? { padding: 18 } : undefined}
+        onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => { e.preventDefault(); setOver(false); add(e.dataTransfer.files); }}
+        onClick={() => input.current?.click()}
+        role="button" tabIndex={0} aria-label="Add documents"
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), input.current?.click())}
+      >
+        <LuFileText size={compact ? 22 : 28} color="var(--text-3)" />
+        <div style={{ fontWeight: 500, marginTop: 6 }}>Drop documents here, or click to browse</div>
+        <div className="hint" style={{ marginTop: 4 }}>{DOC_TYPES_LABEL}</div>
+        <input ref={input} type="file" multiple accept={DOC_ACCEPT} hidden onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
+      </div>
+      {rejected.length > 0 && <div className="warn-box" style={{ fontSize: 13 }}>Skipped (unsupported type): {rejected.join(", ")}</div>}
+      {files.length > 0 && (
+        <div className="row-wrap" style={{ gap: 6 }}>
+          {files.map((f, i) => (
+            <span key={`${f.name}-${i}`} className="tag" style={{ height: 28 }}>
+              <LuFileText size={13} aria-hidden="true" /> {f.name}
+              <button type="button" className="btn btn-ghost btn-icon btn-sm" style={{ width: 22, height: 22 }} aria-label={`Remove ${f.name}`}
+                onClick={() => onChange(files.filter((_, j) => j !== i))}><LuX size={12} /></button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Upload documents for Document Q&A without creating a project. */
+function UploadDocumentsModal({ onClose }: { onClose: () => void }) {
+  const toast = useToast();
+  const [docs, setDocs] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<DocUploadResult | null>(null);
+
+  const submit = async () => {
+    if (!docs.length) return;
+    setBusy(true);
+    try {
+      const r = await uploadDocuments(docs);
+      setResult(r);
+      if (r.uploaded.length) toast(docSummary(r));
+      if (!r.failed.length) onClose();
+      else setDocs(docs.filter((d) => r.failed.some((f) => f.name === d.name)));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Upload documents" onClose={onClose} width={560}
+      footer={<>
+        <button className="btn btn-ghost" onClick={onClose}>Close</button>
+        <button className="btn" onClick={() => navigate("/doc-qa")}><LuMessageSquareText size={15} /> Go to Document Q&amp;A</button>
+        <button className="btn btn-primary" onClick={submit} disabled={busy || !docs.length}>
+          {busy ? <span className="spinner" /> : <LuUpload size={15} />} Upload
+        </button>
+      </>}>
+      <p className="muted" style={{ marginBottom: 14 }}>Add specifications, runbooks or manuals, then ask questions about them in Document Q&amp;A.</p>
+      <DocDropzone files={docs} onChange={setDocs} />
+      {result && result.failed.length > 0 && <div className="error-box" style={{ marginTop: 12 }}>{docFailures(result)}</div>}
     </Modal>
   );
 }

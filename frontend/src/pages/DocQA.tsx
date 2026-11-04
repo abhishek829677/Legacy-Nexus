@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { LuBadgeCheck, LuBraces, LuCircleAlert, LuFileText, LuPaperclip, LuSend, LuTriangleAlert, LuX } from "react-icons/lu";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { LuBadgeCheck, LuBraces, LuCircleAlert, LuFileText, LuLoader, LuSend, LuTriangleAlert, LuUpload } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
 import { ConversationBar, FollowUpNote } from "../components/Conversation";
 import { Markdown } from "../components/Markdown";
 import { ConfidenceRing, useToast } from "../components/ui";
-import { api, ApiError } from "../lib/api";
+import { api } from "../lib/api";
 import { SIGNIN_ROLES, useAuth } from "../lib/auth";
+import { DOC_TYPES_LABEL } from "../lib/docUpload";
 import { useApi } from "../lib/hooks";
 import type { Conversation, DocAnswer, DocCitation, DocDocument } from "../lib/types";
+import { DocumentInventory, UploadTray, useDocUploads, useFilePicker } from "./DocQAInventory";
 
-const ACCEPT = ".pdf,.docx,.txt,.md,.markdown,.rst";
-const accepted = (name: string) => /\.(pdf|docx|txt|md|markdown|rst)$/i.test(name);
+const POLL_MS = 2000; // while a document is being read and indexed
 
 export function DocQAPage() {
   const toast = useToast();
@@ -25,18 +26,28 @@ export function DocQAPage() {
   const [question, setQuestion] = useState("");
   const [thread, setThread] = useState<DocAnswer[]>([]);
   const [pending, setPending] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const currentDoc = useMemo(() => documents?.find((d) => d.id === docId) ?? null, [documents, docId]);
+  const uploads = useDocUploads(documents ?? null, (doc) => { setDocId(doc.id); reloadDocs(); });
+  const picker = useFilePicker(uploads.add);
 
-  // Pick up the most recent document once the list loads.
+  const currentDoc = useMemo(() => documents?.find((d) => d.id === docId) ?? null, [documents, docId]);
+  const ready = currentDoc?.status === "ready";
+
+  // Pick up the most recent document once the list loads (or after the current one is deleted).
   useEffect(() => {
-    if (docId === null && documents && documents.length > 0) setDocId(documents[0].id);
+    if ((docId === null || (documents && !documents.some((d) => d.id === docId))) && documents && documents.length > 0) setDocId(documents[0].id);
+    if (documents && documents.length === 0 && docId !== null) setDocId(null);
   }, [documents, docId]);
+
+  // Keep the list fresh while any document is still being read and indexed.
+  useEffect(() => {
+    if (!documents?.some((d) => d.status === "processing")) return;
+    const t = setTimeout(reloadDocs, POLL_MS);
+    return () => clearTimeout(t);
+  }, [documents, reloadDocs]);
 
   const loadConversations = (id: number, selectLatest = false) =>
     api.get<Conversation[]>(`/doc-qa/documents/${id}/conversations`).then((list) => {
@@ -65,33 +76,9 @@ export function DocQAPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [thread.length, pending]);
 
-  const upload = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    if (!accepted(file.name)) {
-      setError("Unsupported file type. Attach a PDF, Word (.docx), text (.txt) or Markdown (.md) file.");
-      return;
-    }
-    setUploading(true);
-    setError(null);
-    try {
-      const form = new FormData();
-      form.append("file", file, file.name);
-      const doc = await api.upload<DocDocument>("/doc-qa/documents", form);
-      setDocId(doc.id);
-      setThread([]);
-      reloadDocs();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : (e as Error).message);
-    } finally {
-      setUploading(false);
-      if (fileInput.current) fileInput.current.value = "";
-    }
-  };
-
   const ask = async () => {
     const text = question.trim();
-    if (text.length < 3 || pending || docId === null) return;
+    if (text.length < 3 || pending || docId === null || !ready) return;
     setPending(text);
     setQuestion("");
     setError(null);
@@ -111,10 +98,11 @@ export function DocQAPage() {
   };
 
   const removeDoc = async (id: number) => {
-    if (!confirm("Remove this document and its question history?")) return;
+    const name = documents?.find((d) => d.id === id)?.filename ?? "this document";
+    if (!confirm(`Delete “${name}” and its question history? This cannot be undone.`)) return;
     try {
       await api.del(`/doc-qa/documents/${id}`);
-      toast("Document removed");
+      toast("Document deleted");
       if (docId === id) setDocId(null);
       reloadDocs();
     } catch (e) {
@@ -134,32 +122,58 @@ export function DocQAPage() {
     }
   };
 
-  const canSend = !pending && !uploading && question.trim().length >= 3 && docId !== null;
-  const others = (documents ?? []).filter((d) => d.id !== docId);
+  const canSend = !pending && ready && question.trim().length >= 3;
+  const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
 
   return (
     <AppShell title="Document Q&A">
-      <div className="docqa chat">
+      <div
+        className="docqa chat"
+        onDragEnter={(e) => { if (hasFiles(e)) { e.preventDefault(); setDragging((n) => n + 1); } }}
+        onDragOver={(e) => { if (hasFiles(e)) e.preventDefault(); }}
+        onDragLeave={(e) => { if (hasFiles(e)) setDragging((n) => Math.max(0, n - 1)); }}
+        onDrop={(e) => { if (hasFiles(e)) { e.preventDefault(); setDragging(0); uploads.add(e.dataTransfer.files); } }}
+      >
+        {dragging > 0 && (
+          <div className="drop-overlay" aria-hidden="true"><div><LuUpload size={26} /> Drop to upload<span className="subtle" style={{ fontWeight: 400 }}>{DOC_TYPES_LABEL}</span></div></div>
+        )}
         <header className="row" style={{ gap: 10, flexWrap: "wrap" }}>
           <h1 style={{ margin: 0 }}>Document Q&amp;A</h1>
           <span className="tag tag-violet" title="Chosen when you signed in. Sign out to change it.">Answering as {roleLabel}</span>
           <div className="spacer" />
-          {currentDoc && (
+          {currentDoc && ready && (
             <ConversationBar conversations={conversations} currentId={convId} disabled={!!pending}
               onSelect={setConvId} onNew={() => { setConvId(null); setError(null); }} onDelete={removeConversation} />
           )}
         </header>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+          <DocumentInventory documents={documents ?? null} currentId={docId} onSelect={setDocId} onDelete={removeDoc} onUpload={picker.open} />
+          <button type="button" className="btn" onClick={picker.open}><LuUpload size={15} /> Upload</button>
+          {picker.element}
+          <span className="subtle hide-sm" style={{ fontSize: 12.5 }}>or drop files anywhere on this page · large files upload in pieces and can be cancelled</span>
+        </div>
 
         <div className="chat-thread">
           {thread.length === 0 && !pending && (
             <div className="chat-empty">
-              <LuFileText size={28} color="var(--text-3)" />
-              <h2>{currentDoc ? `Ask anything about ${currentDoc.filename}` : "Attach a document to start"}</h2>
+              {currentDoc?.status === "processing" ? <LuLoader size={28} color="var(--brand)" className="spin" /> : currentDoc?.status === "failed" ? <LuCircleAlert size={28} color="var(--red)" /> : <LuFileText size={28} color="var(--text-3)" />}
+              <h2>
+                {!documents ? "Loading your documents…"
+                  : !currentDoc ? "Upload a document to start"
+                  : currentDoc.status === "processing" ? `Reading and indexing ${currentDoc.filename}…`
+                  : currentDoc.status === "failed" ? `${currentDoc.filename} could not be read`
+                  : `Ask anything about ${currentDoc.filename}`}
+              </h2>
               <p className="muted">
-                {currentDoc
-                  ? "Answers come only from this document and cite where they came from."
-                  : <>Use the <LuPaperclip size={14} style={{ verticalAlign: -2 }} /> button below. PDF, Word, text or Markdown.</>}
+                {!documents ? null
+                  : !currentDoc ? `Upload a ${DOC_TYPES_LABEL} file, or drop it on this page. Large files are sent in pieces with a progress bar.`
+                  : currentDoc.status === "processing" ? "You can ask questions as soon as it is ready. This page updates on its own."
+                  : currentDoc.status === "failed" ? `${currentDoc.error ?? "Processing failed."} Delete it from the Documents list and upload it again.`
+                  : "Answers come only from this document and cite where they came from."}
               </p>
+              {documents && !currentDoc && (
+                <button type="button" className="btn btn-primary" style={{ marginTop: 14 }} onClick={picker.open}><LuUpload size={15} /> Upload a document</button>
+              )}
             </div>
           )}
 
@@ -180,45 +194,19 @@ export function DocQAPage() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Message box pinned to the bottom, with the attach button on the left. */}
+        {/* Upload progress and the message box, pinned to the bottom. */}
         <div className="ask-box">
+          <UploadTray items={uploads.items} onCancel={uploads.cancel} onRetry={uploads.retry} onDismiss={uploads.dismiss} onClear={uploads.clearFinished} />
           {error && <div className="error-box" style={{ marginBottom: 8 }}>{error}</div>}
-          <form
-            className={`ask-input composer ${dragOver ? "over" : ""}`}
-            onSubmit={(e) => { e.preventDefault(); ask(); }}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => { e.preventDefault(); setDragOver(false); upload(e.dataTransfer.files); }}
-          >
-            {currentDoc && (
-              <div className="attach-row">
-                <span className="attach-chip" title={currentDoc.filename}>
-                  <LuFileText size={14} />
-                  <span className="name">{currentDoc.filename}</span>
-                  <span className="subtle">{currentDoc.format.toUpperCase()}{currentDoc.page_count ? ` · ${currentDoc.page_count} pages` : ""}</span>
-                  <button type="button" className="x" onClick={() => removeDoc(currentDoc.id)} title="Remove this document" aria-label="Remove this document"><LuX size={13} /></button>
-                </span>
-                {others.length > 0 && (
-                  <select className="select attach-switch" value="" onChange={(e) => e.target.value && setDocId(Number(e.target.value))} aria-label="Switch document">
-                    <option value="">Switch document…</option>
-                    {others.map((d) => <option key={d.id} value={d.id}>{d.filename}</option>)}
-                  </select>
-                )}
-              </div>
-            )}
+          <form className="ask-input composer" onSubmit={(e) => { e.preventDefault(); ask(); }}>
             <div className="composer-row">
-              <button type="button" className="btn btn-ghost btn-icon attach-btn" onClick={() => fileInput.current?.click()}
-                disabled={uploading} title="Attach a document (PDF, Word, text, Markdown)" aria-label="Attach a document">
-                {uploading ? <span className="spinner" /> : <LuPaperclip size={18} />}
-              </button>
-              <input ref={fileInput} type="file" accept={ACCEPT} hidden onChange={(e) => upload(e.target.files)} />
               <textarea
                 value={question}
-                placeholder={uploading ? "Reading the document…" : currentDoc ? "Ask a question about the document" : "Attach a document first"}
+                placeholder={!currentDoc ? "Upload a document first" : ready ? `Ask a question about ${currentDoc.filename}` : currentDoc.status === "processing" ? "Indexing the document…" : "This document could not be read"}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } }}
                 rows={1}
-                disabled={!currentDoc}
+                disabled={!ready}
                 aria-label="Your question"
               />
               <button className="btn btn-primary btn-icon" type="submit" disabled={!canSend} title="Send" aria-label="Send"><LuSend size={16} /></button>

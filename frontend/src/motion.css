@@ -1,0 +1,144 @@
+/* ==========================================================================
+   Motion layer: subtle, app-wide transitions plus the Reveal and Slider parts.
+   Loaded after styles.css. The global prefers-reduced-motion rule in styles.css
+   shortens every animation and transition to near zero.
+   ========================================================================== */
+
+:root {
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+@keyframes mx-fade-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes mx-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mx-pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes mx-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* ---------- page entrance: every page fades in as it opens ---------- */
+.content > * { animation: mx-fade-up 0.45s var(--ease-out) both; }
+.content > *:nth-child(2) { animation-delay: 40ms; }
+.content > *:nth-child(3) { animation-delay: 80ms; }
+.content > *:nth-child(n + 4) { animation-delay: 120ms; }
+
+/* ---------- interactive surfaces ---------- */
+.btn { transition: background 0.18s, border-color 0.18s, color 0.18s, box-shadow 0.18s, transform 0.12s var(--ease-out); }
+.btn:active:not(:disabled) { transform: translateY(1px) scale(0.985); }
+.btn-primary:hover:not(:disabled) { box-shadow: 0 6px 16px -6px rgba(36, 86, 211, 0.55); }
+.card { transition: box-shadow 0.25s var(--ease-out), border-color 0.25s; }
+.card.clickable:hover, a.card:hover { box-shadow: var(--shadow-3); border-color: var(--line-strong); }
+.nav-item { transition: background 0.15s, color 0.15s; }
+.tag { transition: background 0.15s, color 0.15s; }
+.input, .select { transition: border-color 0.15s, box-shadow 0.15s; }
+table.data tbody tr { transition: background 0.12s; }
+
+/* ---------- overlays ---------- */
+.modal { animation: mx-pop 0.28s var(--ease-out) both; }
+.toast { animation: mx-pop 0.3s var(--ease-out) both; }
+.tour-card { animation: mx-pop 0.3s var(--ease-out) both; }
+
+/* ---------- screen-reader-only text (used by CountUp) ---------- */
+.mx-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ---------- page-change progress bar (thin gradient line at the very top) ---------- */
+@keyframes mx-route { 0% { transform: scaleX(0); opacity: 1; } 70% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+.mx-route-bar {
+  position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 200; pointer-events: none; transform-origin: left;
+  background: linear-gradient(90deg, #2456d3, #6d4fe0, #0891b2);
+  box-shadow: 0 0 10px rgba(36, 86, 211, 0.5);
+  animation: mx-route 0.75s var(--ease-out) both;
+}
+
+/* ---------- cursor spotlight (add class "mx-spot") ---------- */
+.mx-spot { position: relative; isolation: isolate; }
+.mx-spot::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; opacity: 0;
+  background: radial-gradient(260px circle at var(--mx-x, 50%) var(--mx-y, 50%), rgba(36, 86, 211, 0.10), transparent 70%);
+  transition: opacity 0.3s;
+}
+.mx-spot:hover::after { opacity: 1; }
+
+/* ---------- Hover.css-style effects ---------- */
+/* float: lift with a soft shadow */
+.mx-float { transition: transform 0.3s var(--ease-out), box-shadow 0.3s var(--ease-out), border-color 0.2s; }
+.mx-float:hover { transform: translateY(-3px); box-shadow: 0 16px 30px -18px rgba(16, 24, 40, 0.35); }
+.mx-float:hover .ico { animation: mx-wobble 0.6s var(--ease-out); }
+@keyframes mx-wobble { 0%, 100% { transform: none; } 30% { transform: rotate(-8deg) scale(1.06); } 60% { transform: rotate(5deg) scale(1.04); } }
+/* sidebar: icon nudge and an active marker that grows in */
+.sidebar .nav-item { position: relative; }
+.sidebar .nav-item svg { transition: transform 0.25s var(--ease-out); }
+.sidebar .nav-item:hover svg { transform: translateX(2px); }
+.sidebar .nav-item.active::before {
+  content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px;
+  background: var(--brand, #2456d3); animation: mx-grow-y 0.35s var(--ease-out) both;
+}
+@keyframes mx-grow-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+/* underline from the centre */
+.mx-underline { position: relative; }
+.mx-underline::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: 4px; height: 2px; border-radius: 2px;
+  background: currentColor; transform: scaleX(0); transition: transform 0.3s var(--ease-out);
+}
+.mx-underline:hover::after, .mx-underline:focus-visible::after { transform: scaleX(1); }
+
+/* ---------- Animista-style entrances ---------- */
+@keyframes mx-focus-in { from { filter: blur(10px); opacity: 0; letter-spacing: -0.06em; } to { filter: blur(0); opacity: 1; } }
+.mx-focus-in { animation: mx-focus-in 0.9s var(--ease-out) both; }
+
+/* ---------- shimmer text (loading labels) ---------- */
+@keyframes mx-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.mx-shimmer {
+  background: linear-gradient(90deg, var(--text-3) 0%, var(--text-3) 40%, var(--text) 50%, var(--text-3) 60%, var(--text-3) 100%);
+  background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: mx-shimmer 2.2s linear infinite;
+}
+
+/* ---------- rotating gradient border (add class "mx-glow-border") ---------- */
+@property --mx-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes mx-spin { to { --mx-angle: 360deg; } }
+.mx-glow-border { position: relative; isolation: isolate; }
+.mx-glow-border::before {
+  content: ""; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; padding: 1px;
+  background: conic-gradient(from var(--mx-angle), rgba(36, 86, 211, 0.15), #2456d3, #6d4fe0, #0891b2, rgba(36, 86, 211, 0.15) 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: mx-spin 6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mx-shimmer, .mx-glow-border::before { animation: none !important; }
+  .mx-shimmer { color: var(--text-3); background: none; }
+}
+
+/* ---------- Reveal ---------- */
+.mx-reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out); }
+.mx-reveal.is-in { opacity: 1; transform: none; }
+
+/* ---------- Slider ---------- */
+.mx-slider { position: relative; }
+.mx-slides { display: grid; }
+.mx-slide {
+  grid-area: 1 / 1; opacity: 0; transform: translateX(24px); visibility: hidden;
+  transition: opacity 0.6s var(--ease-out), transform 0.6s var(--ease-out), visibility 0s linear 0.6s;
+}
+.mx-slide.on { opacity: 1; transform: none; visibility: visible; transition: opacity 0.6s var(--ease-out), transform 0.6s var(--ease-out), visibility 0s; }
+.mx-slider-nav { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
+.mx-dots { display: flex; align-items: center; gap: 6px; flex: 1; }
+.mx-dot { position: relative; height: 6px; width: 22px; border-radius: 999px; border: 0; padding: 0; cursor: pointer; overflow: hidden; transition: width 0.35s var(--ease-out), background 0.2s; }
+.mx-dot.on { width: 44px; }
+.mx-dot-fill { position: absolute; inset: 0; transform-origin: left; animation: mx-progress linear both; border-radius: inherit; }
+.mx-dot::after { content: ""; position: absolute; inset: -14px -2px; } /* larger touch target */
+.mx-icon-btn {
+  width: 34px; height: 34px; border-radius: 999px; display: grid; place-items: center; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.12s;
+}
+.mx-icon-btn:active { transform: scale(0.94); }
+.mx-slider-light .mx-dot { background: var(--line-strong); }
+.mx-slider-light .mx-dot.on { background: rgba(36, 86, 211, 0.25); }
+.mx-slider-light .mx-dot-fill, .mx-slider-light .mx-dot.on:not(:has(.mx-dot-fill)) { background: var(--brand); }
+.mx-slider-light .mx-icon-btn { background: var(--surface); border: 1px solid var(--line); color: var(--text-2); }
+.mx-slider-light .mx-icon-btn:hover { border-color: var(--line-strong); color: var(--text); }
+.mx-slider-dark .mx-dot { background: rgba(255, 255, 255, 0.18); }
+.mx-slider-dark .mx-dot.on { background: rgba(255, 255, 255, 0.25); }
+.mx-slider-dark .mx-dot-fill, .mx-slider-dark .mx-dot.on:not(:has(.mx-dot-fill)) { background: #fff; }
+.mx-slider-dark .mx-icon-btn { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); color: rgba(255, 255, 255, 0.8); }
+.mx-slider-dark .mx-icon-btn:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }

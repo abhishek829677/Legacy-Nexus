@@ -6,6 +6,11 @@ import { useProject } from "../components/ProjectContext";
 import { SymbolSearch } from "../components/SymbolSearch";
 import { usePageTour } from "../components/Tour";
 import { IMPACT_TOUR } from "../components/tours";
+import { PageGuide } from "../components/PageGuide";
+import { BadgeLegend, TypeBadge } from "../components/GraphLegend";
+import { badgeFor } from "../lib/nodeBadge";
+import { CountUp } from "../components/Motion";
+import { GUIDES } from "../lib/guides";
 import { EmptyState, ErrorBox, TypeDot, useToast } from "../components/ui";
 import { api, download, qs } from "../lib/api";
 import { TYPE_LABELS, severityTag } from "../lib/format";
@@ -15,6 +20,11 @@ import type { ImpactExplanation, ImpactItem, ImpactResult, SymbolHit } from "../
 
 const SEV_COLOR: Record<string, string> = { High: "#b93a27", Medium: "#c9821b", Low: "#2a8253" };
 const ROOT_COLOR = "#e9a23b";
+const SEV_HINT: Record<string, string> = {
+  High: "Directly connected, or the value itself reaches it. Check first.",
+  Medium: "A few steps away, or a decision depends on it.",
+  Low: "Far away, affected only through a condition.",
+};
 
 /** What the current result was run for: a named element or a whole file. */
 type Subject = { kind: "target"; id: string } | { kind: "file"; path: string };
@@ -91,9 +101,10 @@ export function ImpactPage() {
       <div className="page-head">
         <div>
           <h1>Impact analysis</h1>
-          <p>Pick a file on the left, or name a column, table, program, copybook or dataset that is about to change. LegacyNexus follows data and control flow to everything that can break.</p>
+          <p>Find out what could break before you change something.</p>
         </div>
       </div>
+      <PageGuide id="impact" guide={GUIDES.impact} />
 
       <div className="impact-layout">
         <FileExplorer pid={pid} selected={subject?.kind === "file" ? subject.path : null} onPick={runFile} />
@@ -142,17 +153,18 @@ export function ImpactPage() {
                   {result.file ? <b className="mono">{result.file}</b> : null}
                   {result.file && <span className="subtle">which contains</span>}
                   {result.start?.map((s) => (
-                    <span key={s.id} className="tag"><TypeDot type={s.type} /> <span className="mono">{s.label}</span></span>
+                    <span key={s.id} className="tag"><TypeBadge badge={badgeFor(s.type)} type={s.type} /> <span className="mono">{s.label}</span></span>
                   ))}
                 </div>
               </div>
 
               <div className="stat-row" style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}>
-                <div className="stat"><div className="v">{result.impacted!.length}</div><div className="k">Impacted components</div></div>
+                <div className="stat mx-spot"><div className="v"><CountUp value={result.impacted!.length} /></div><div className="k">Impacted components</div></div>
                 {(["High", "Medium", "Low"] as const).map((s) => (
-                  <div key={s} className="stat" style={{ cursor: "pointer" }} onClick={() => setFilter(filter === s ? "all" : s)}>
-                    <div className="v" style={{ color: SEV_COLOR[s] }}>{result.severity_counts?.[s] ?? 0}</div>
+                  <div key={s} className="stat mx-spot" style={{ cursor: "pointer" }} onClick={() => setFilter(filter === s ? "all" : s)}>
+                    <div className="v" style={{ color: SEV_COLOR[s] }}><CountUp value={result.severity_counts?.[s]} /></div>
                     <div className="k">{s} severity {filter === s && "· filtered"}</div>
+                    <div className="subtle" style={{ fontSize: 12, marginTop: 2 }}>{SEV_HINT[s]}</div>
                   </div>
                 ))}
               </div>
@@ -165,19 +177,26 @@ export function ImpactPage() {
                 <>
                   {result.representative_chain && result.representative_chain.length > 1 && (
                     <div className="card card-pad">
-                      <h3 style={{ marginBottom: 12 }}>Longest impact path</h3>
+                      <h3>Longest impact path</h3>
+                      <p className="subtle" style={{ margin: "4px 0 12px" }}>The furthest the change travels, one step at a time.</p>
                       <div className="row-wrap" style={{ gap: 6 }}>
                         {result.representative_chain.map((n, i) => (
                           <span key={n.id} className="row" style={{ gap: 6 }}>
                             {i > 0 && <LuArrowDown size={14} style={{ transform: "rotate(-90deg)", color: "var(--text-3)" }} />}
-                            <span className="tag" style={{ height: 28, fontSize: 13 }}><TypeDot type={n.type} /> <span className="mono">{n.label}</span></span>
+                            <span className="tag" style={{ height: 28, fontSize: 13 }}><TypeBadge badge={badgeFor(n.type)} type={n.type} /> <span className="mono">{n.label}</span></span>
                           </span>
                         ))}
                       </div>
                     </div>
                   )}
                   <div className="card" style={{ overflow: "hidden" }}>
-                    <div className="card-head"><h3>Impact graph</h3><span className="subtle">{result.graph!.nodes.length} elements · {result.graph!.edges.length} links</span></div>
+                    <div className="card-head">
+                      <div>
+                        <h3>Impact graph</h3>
+                        <div className="subtle" style={{ marginTop: 2 }}>Arrows point from the change to what it affects. Ring colour shows severity.</div>
+                      </div>
+                      <span className="subtle">{result.graph!.nodes.length} elements · {result.graph!.edges.length} links</span>
+                    </div>
                     <div className="graph-stage graph-stage-inline">
                       <GraphCanvas ref={canvas} graph={result.graph!} nodeAccent={accents} ariaLabel="Impact graph" />
                       <div className="panel graph-controls" role="group" aria-label="View">
@@ -190,6 +209,7 @@ export function ImpactPage() {
                         {(["High", "Medium", "Low"] as const).map((s) => (
                           <span key={s}><i className="lg-ring" style={{ borderColor: SEV_COLOR[s] }} /> {s} severity</span>
                         ))}
+                        <BadgeLegend graph={result.graph!} />
                       </div>
                     </div>
                   </div>

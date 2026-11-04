@@ -1,6 +1,9 @@
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") || "/api";
 const TOKEN_KEY = "lnx.token";
 
+/** Full URL for an API path (for requests that need XMLHttpRequest, e.g. upload progress). */
+export const apiUrl = (path: string) => `${BASE}${path}`;
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {

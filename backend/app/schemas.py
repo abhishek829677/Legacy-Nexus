@@ -72,6 +72,12 @@ class DocCompareRequest(BaseModel):
     roles: list[DocRole] | None = Field(default=None, description="Defaults to all four roles when omitted")
 
 
+class DocUploadStart(BaseModel):
+    """Start a chunked Document Q&A upload: the file's name and its total size in bytes."""
+    filename: str = Field(min_length=1, max_length=512)
+    size: int = Field(gt=0)
+
+
 class ImpactRequest(BaseModel):
     target: str = Field(min_length=1, max_length=512, description="A node id or a name such as CUSTOMER_ADDRESS")
 
