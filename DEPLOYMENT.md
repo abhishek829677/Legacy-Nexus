@@ -201,6 +201,21 @@ Set-ExecutionPolicy -Scope Process Bypass
 | `-WithAzureOpenAI` | Optional: create Azure OpenAI with chat + embedding models |
 | `-OpenAILocation` | Optional: region for Azure OpenAI if your main region lacks the models |
 | `-AllowSignup` | Optional: allow self sign-up (default is invite-only) |
+| `-DbLocation` | Optional: region for PostgreSQL only, when `-Location` does not allow it (e.g. `centralus`) |
+| `-ExistingAcrName` | Optional: use a Container Registry already in the resource group instead of creating one |
+
+Example used for the current dev environment (resource group created in East US, PostgreSQL restricted there):
+
+```powershell
+./infra/azure/deploy.ps1 -ResourceGroup LegacyNexus -Location eastus -DbLocation centralus -Env dev `
+  -AdminEmail <your-email> -Sizing free -LocalBuild -GenerateAdminPassword -ExistingAcrName LegacyNexusRegistry
+```
+
+Check which regions allow PostgreSQL B1ms for your subscription before choosing:
+
+```powershell
+az postgres flexible-server list-skus -l centralus --query "[0].reason" -o tsv   # empty = allowed
+```
 
 What the script does:
 
@@ -252,7 +267,8 @@ in Settings, so an administrator's choice is never overwritten.
 
 | Problem | Fix |
 |---|---|
-| `location is restricted` / PostgreSQL not available | Use another `-Location` (e.g. `eastus`, `southindia`) with a new resource group |
+| `location is restricted` / PostgreSQL not available | Add `-DbLocation <allowed region>` (e.g. `centralus`) to place only the database elsewhere |
+| `/api/...` returns **426 Upgrade Required** | nginx must proxy with HTTP/1.1; `proxy_http_version 1.1;` is set in [frontend/nginx.conf](frontend/nginx.conf) |
 | `TasksOperationsNotAllowed` / ACR build blocked | Add `-LocalBuild` |
 | `-LocalBuild needs Docker Desktop installed` | Install Rancher/Docker Desktop and restart the terminal |
 | `Docker is installed but not running` | Start Rancher Desktop and wait until it is ready |

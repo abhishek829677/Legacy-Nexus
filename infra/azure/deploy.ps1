@@ -32,9 +32,15 @@ param(
   [switch] $LocalBuild,
   # First run only: generate the first administrator's password instead of prompting (non-interactive runs).
   # It is stored only in Key Vault as bootstrap-admin-password.
-  [switch] $GenerateAdminPassword
+  [switch] $GenerateAdminPassword,
+  # Use a Container Registry that already exists in the resource group instead of creating one
+  [string] $ExistingAcrName = "",
+  # Region for PostgreSQL only, when -Location does not allow it (free trials often hit this)
+  [string] $DbLocation = ""
 )
-$ErrorActionPreference = "Stop"
+# "Continue", not "Stop": in Windows PowerShell 5.1, "Stop" turns any warning that az or docker writes to
+# stderr into a fatal error. Failures are caught with Assert-Ok after each command instead.
+$ErrorActionPreference = "Continue"
 $root = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $deploymentName = "legacynexus-$Env"
 $tag = (Get-Date -Format "yyyyMMddHHmm")
@@ -59,6 +65,7 @@ function New-Secret([int] $bytes = 36) {
 
 Write-Host "==> Resource group $ResourceGroup ($Location)"
 az group create -n $ResourceGroup -l $Location -o none
+Assert-Ok "Creating resource group $ResourceGroup"
 
 $me = az ad signed-in-user show --query id -o tsv 2>$null
 $principalType = "User"
@@ -71,6 +78,8 @@ $common = @("namePrefix=$NamePrefix", "env=$Env", "bootstrapAdminEmail=$AdminEma
             "deployerPrincipalId=$me", "deployerPrincipalType=$principalType", "sizing=$Sizing",
             "deployOpenAI=$($WithAzureOpenAI.IsPresent.ToString().ToLower())")
 if ($OpenAILocation) { $common += "openAILocation=$OpenAILocation" }
+if ($ExistingAcrName) { $common += "existingAcrName=$ExistingAcrName" }
+if ($DbLocation) { $common += "dbLocation=$DbLocation" }
 
 if ($first) {
   Write-Host "==> First deployment: generating secrets (stored only in Key Vault)"
