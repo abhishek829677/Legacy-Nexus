@@ -29,7 +29,10 @@ param(
   [switch] $WithAzureOpenAI,
   [string] $OpenAILocation = "",
   # Build the images with Docker on this machine and push them, instead of building in Azure (az acr build)
-  [switch] $LocalBuild
+  [switch] $LocalBuild,
+  # First run only: generate the first administrator's password instead of prompting (non-interactive runs).
+  # It is stored only in Key Vault as bootstrap-admin-password.
+  [switch] $GenerateAdminPassword
 )
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "../..")
@@ -73,8 +76,12 @@ if ($first) {
   Write-Host "==> First deployment: generating secrets (stored only in Key Vault)"
   $dbPassword = "Lnx!" + (New-Secret 24)
   $secretKey = New-Secret 48
-  $adminPassword = Read-Host -Prompt "Password for the first administrator ($AdminEmail)" -AsSecureString
-  $adminPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPassword))
+  if ($GenerateAdminPassword) {
+    $adminPlain = "Adm!" + (New-Secret 18)
+  } else {
+    $adminPassword = Read-Host -Prompt "Password for the first administrator ($AdminEmail)" -AsSecureString
+    $adminPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPassword))
+  }
 
   Write-Host "==> Creating infrastructure (10-15 minutes)"
   $out = az deployment group create -g $ResourceGroup -n $deploymentName -f (Join-Path $PSScriptRoot "main.bicep") `
@@ -122,3 +129,6 @@ Assert-Ok "Rolling out images"
 Write-Host ""
 Write-Host "LegacyNexus AI is deployed: $($out.webUrl.value)"
 Write-Host "Readiness of every backing service: $($out.webUrl.value)/api/health/ready"
+if ($first -and $GenerateAdminPassword) {
+  Write-Host "Admin password: az keyvault secret show --vault-name $($out.keyVaultName.value) -n bootstrap-admin-password --query value -o tsv"
+}
