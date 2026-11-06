@@ -102,6 +102,7 @@ def save_model(db: Session, data: dict, user_id: int, model: AIModel | None = No
     if provider not in PROVIDER_CATALOG:
         raise ValueError(f"Unknown provider {provider}")
     m = model or AIModel(created_by=user_id, provider=provider)
+    before = tuple(getattr(m, f) for f in MODEL_FIELDS) + (m.encrypted_api_key,) if model else None
     for f in MODEL_FIELDS:
         if f in data and data[f] is not None:
             setattr(m, f, data[f].strip())
@@ -116,6 +117,9 @@ def save_model(db: Session, data: dict, user_id: int, model: AIModel | None = No
     for flag in ("is_small", "is_fallback"):
         if data.get(flag) is not None:
             setattr(m, flag, bool(data[flag]))
+    if before is not None and before != tuple(getattr(m, f) for f in MODEL_FIELDS) + (m.encrypted_api_key,):
+        m.last_test_ok = None
+        m.last_tested_at = None
     if model is None:
         db.add(m)
     db.flush()

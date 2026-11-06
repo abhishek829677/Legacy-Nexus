@@ -10,6 +10,7 @@ import "./modernize.css";
 import { PAGE, TOUR, TOUR_KEY } from "./modernize.copy";
 import { selectionsChanged } from "./modernize.format";
 import { CardHead, StepSection } from "./ModernizeSection";
+import { CostPanel } from "./CostPanel";
 import { ReadinessPanel, type Readiness } from "./ReadinessPanel";
 
 type Plan = {
@@ -274,20 +275,28 @@ export function ModernizePage() {
         {/* 4. Plan the migration */}
         <StepSection step={S.roadmap} topic={PAGE.waves.topic} tour="mod-roadmap" ready={ready}>
           {plan && (
-            <div className="card">
-              <CardHead title={PAGE.waves.heading} caption={plan.waves.length > 0 ? PAGE.waves.caption(plan.waves.length) : undefined} />
-              <div className="card-body waves">
-                {plan.waves.length === 0 && <p className="muted">{PAGE.waves.empty}</p>}
-                {plan.waves.map((w) => (
-                  <div className="wave" key={w.wave}>
-                    <div className="rail"><span className="n">{w.wave}</span><span className="l" /></div>
-                    <div className="body">
-                      <div className="row-wrap"><b>{w.name}</b><span className={`tag ${severityTag(w.risk)}`}>{PAGE.waves.risk(w.risk)}</span>{w.rules_to_verify > 0 && <span className="tag">{PAGE.waves.rulesToVerify(w.rules_to_verify)}</span>}</div>
-                      <div className="subtle mono" style={{ margin: "4px 0 6px" }}>{w.programs.join(", ")}{w.tables && w.tables.length ? ` · ${w.tables.join(", ")}` : ""}</div>
-                      <ul className="muted" style={{ margin: 0, paddingLeft: 18, fontSize: 13.5 }}>{w.activities.map((a) => <li key={a}>{a}</li>)}</ul>
+            <div className="stack" style={{ gap: 20 }}>
+              <div className="card">
+                <CardHead title={PAGE.waves.heading} caption={plan.waves.length > 0 ? PAGE.waves.caption(plan.waves.length) : undefined} />
+                <div className="card-body waves">
+                  {plan.waves.length === 0 && <p className="muted">{PAGE.waves.empty}</p>}
+                  {plan.waves.map((w) => (
+                    <div className="wave" key={w.wave}>
+                      <div className="rail"><span className="n">{w.wave}</span><span className="l" /></div>
+                      <div className="body">
+                        <div className="row-wrap"><b>{w.name}</b><span className={`tag ${severityTag(w.risk)}`}>{PAGE.waves.risk(w.risk)}</span>{w.rules_to_verify > 0 && <span className="tag">{PAGE.waves.rulesToVerify(w.rules_to_verify)}</span>}</div>
+                        <div className="subtle mono" style={{ margin: "4px 0 6px" }}>{w.programs.join(", ")}{w.tables && w.tables.length ? ` · ${w.tables.join(", ")}` : ""}</div>
+                        <ul className="muted" style={{ margin: 0, paddingLeft: 18, fontSize: 13.5 }}>{w.activities.map((a) => <li key={a}>{a}</li>)}</ul>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+              <div className="card">
+                <CardHead title={PAGE.cost.heading} caption={PAGE.cost.caption} />
+                <div className="card-body">
+                  <CostPanel plan={{ assessments: plan.assessments, waves: plan.waves, services: plan.services, targets: plan.targets }} />
+                </div>
               </div>
             </div>
           )}
