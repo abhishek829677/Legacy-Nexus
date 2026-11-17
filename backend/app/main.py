@@ -38,10 +38,13 @@ def _bootstrap() -> None:
                 log.info("Created bootstrap administrator %s", settings.bootstrap_admin_email)
             else:
                 log.warning("No users exist. Set BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD to create one.")
-        # Analyses interrupted by a restart cannot resume; surface them so users can re-run.
-        db.execute(update(Project).where(Project.status == "analyzing")
-                   .values(status="failed", stage="Interrupted", error="The server restarted during analysis. Run it again."))
-        db.commit()
+        # Inline jobs run inside this process, so a restart interrupted them: surface them so users can re-run.
+        # With a queue (cloud) the analysis runs on a worker and an API replica starting must not touch it:
+        # replicas start on every scale-out and cold start, which used to mark running analyses as failed.
+        if settings.job_backend.lower() == "inline":
+            db.execute(update(Project).where(Project.status == "analyzing")
+                       .values(status="failed", stage="Interrupted", error="The server restarted during analysis. Run it again."))
+            db.commit()
 
 
 @asynccontextmanager
@@ -70,8 +73,11 @@ def create_app() -> FastAPI:
         app.include_router(r, prefix=settings.api_prefix)
 
     @app.get(f"{settings.api_prefix}/health", tags=["system"])
-    def health() -> dict:
-        """Liveness: the process is up. In development it also names the demo account (never the password)."""
+    async def health() -> dict:
+        """Liveness: the process is up. In development it also names the demo account (never the password).
+
+        Async so it answers on the event loop even when every worker thread is busy with a heavy request;
+        otherwise the liveness probe times out and Azure restarts a healthy container."""
         demo = settings.bootstrap_admin_email if settings.environment == "development" else None
         return {"status": "ok", "app": settings.app_name, "environment": settings.environment,
                 "profile": settings.deployment_profile, "demo_login": demo}

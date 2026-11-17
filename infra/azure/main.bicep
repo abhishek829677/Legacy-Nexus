@@ -304,10 +304,13 @@ resource queue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
   }
 }
 
+// Used only by the worker's scale rule. KEDA reads the queue's message count, which Service Bus allows
+// only with Manage (and Manage requires Listen and Send). With Listen alone every check returns 401,
+// the worker never starts and analyses stay "Queued". Scoped to this one queue.
 resource kedaListen 'Microsoft.ServiceBus/namespaces/queues/authorizationRules@2022-10-01-preview' = {
   parent: queue
   name: 'keda-scaler'
-  properties: { rights: ['Listen'] }
+  properties: { rights: ['Manage', 'Listen', 'Send'] }
 }
 
 resource busSender 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -466,9 +469,13 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           env: backendEnv
           resources: { cpu: json('1.0'), memory: '2Gi' }
           volumeMounts: dataMount
+          // Probes default to a 1 s timeout. The readiness check talks to PostgreSQL and the file share,
+          // which can take longer (cold start, database in another region), and a missed probe takes the
+          // replica out of traffic or restarts it. The startup probe gives migrations time on first boot.
           probes: [
-            { type: 'Liveness', httpGet: { path: '/api/health', port: 8000 }, periodSeconds: 30 }
-            { type: 'Readiness', httpGet: { path: '/api/health/ready', port: 8000 }, periodSeconds: 30, failureThreshold: 6 }
+            { type: 'Startup', httpGet: { path: '/api/health', port: 8000 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 30 }
+            { type: 'Liveness', httpGet: { path: '/api/health', port: 8000 }, periodSeconds: 30, timeoutSeconds: 10, failureThreshold: 5 }
+            { type: 'Readiness', httpGet: { path: '/api/health/ready', port: 8000 }, periodSeconds: 30, timeoutSeconds: 15, failureThreshold: 6 }
           ]
         }
       ]
@@ -561,7 +568,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
           image: webImage
           env: [{ name: 'BACKEND_URL', value: apiInternalUrl }]
           resources: { cpu: json('0.5'), memory: '1Gi' }
-          probes: [{ type: 'Liveness', httpGet: { path: '/healthz', port: 80 }, periodSeconds: 30 }]
+          probes: [{ type: 'Liveness', httpGet: { path: '/healthz', port: 80 }, periodSeconds: 30, timeoutSeconds: 5 }]
         }
       ]
       scale: { minReplicas: isFree ? 0 : 1, maxReplicas: 3 }

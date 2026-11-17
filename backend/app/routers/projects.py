@@ -20,7 +20,10 @@ def list_projects(user: CurrentUser, db: DB) -> list[Project]:
     q = select(Project).order_by(Project.updated_at.desc())
     if user.role != "admin":
         q = q.where(Project.owner_id == user.id)
-    return list(db.scalars(q))
+    projects = list(db.scalars(q))
+    for p in projects:
+        analysis_runner.expire_if_stale(db, p)
+    return projects
 
 
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
