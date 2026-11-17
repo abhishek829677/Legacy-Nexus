@@ -4,7 +4,7 @@ import { Slider, type Slide } from "../components/Motion";
 import { Logo } from "../components/ui";
 import "./auth.css";
 import { api } from "../lib/api";
-import { SIGNIN_ROLES, useAuth } from "../lib/auth";
+import { landingPath, SIGNIN_ROLES, useAuth } from "../lib/auth";
 import { Link, navigate, useSearchParam } from "../lib/router";
 import type { DocRole } from "../lib/types";
 
@@ -153,8 +153,8 @@ export function LoginPage() {
   const changed = useSearchParam("reset") === "done";
 
   useEffect(() => {
-    if (user) navigate("/projects", true);
-  }, [user]);
+    if (user) navigate(landingPath(signinRole), true);
+  }, [user, signinRole]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -162,7 +162,7 @@ export function LoginPage() {
     setError(null);
     try {
       await login(email.trim(), password, role);
-      navigate("/projects", true);
+      navigate(landingPath(role), true);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -207,8 +207,8 @@ export function SignupPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (user) navigate("/projects", true);
-  }, [user]);
+    if (user) navigate(landingPath(signinRole), true);
+  }, [user, signinRole]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -218,7 +218,7 @@ export function SignupPage() {
     setBusy(true);
     try {
       await register(name.trim(), email.trim(), password, role);
-      navigate("/projects", true);
+      navigate(landingPath(role), true);
     } catch (err) {
       setError((err as Error).message);
     } finally {

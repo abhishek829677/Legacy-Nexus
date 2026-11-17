@@ -3,7 +3,7 @@ import { AppShell } from "./components/AppShell";
 import { ProjectProvider, useProject } from "./components/ProjectContext";
 import { TourProvider } from "./components/Tour";
 import { EmptyState, Loading } from "./components/ui";
-import { useAuth } from "./lib/auth";
+import { accessFor, landingPath, useAuth } from "./lib/auth";
 import { Link, matchPath, navigate, useLocation } from "./lib/router";
 import { AskPage } from "./pages/Ask";
 import { DocQAPage } from "./pages/DocQA";
@@ -43,6 +43,17 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <TourProvider>{children}</TourProvider>;
 }
 
+/** Keeps a section out of reach of sign-in roles that may not open it, redirecting to one they can. */
+function RequireAccess({ need, children }: { need: "applications" | "docqa"; children: ReactNode }) {
+  const { signinRole } = useAuth();
+  const allowed = accessFor(signinRole)[need];
+  useEffect(() => {
+    if (!allowed) navigate(landingPath(signinRole), true);
+  }, [allowed, signinRole]);
+  if (!allowed) return <Loading label="Redirecting" />;
+  return <>{children}</>;
+}
+
 /** Waits for the project; pages other than Overview and Files need a finished analysis. */
 function ProjectGate({ page }: { page: string }) {
   const { project, error } = useProject();
@@ -68,8 +79,8 @@ export function App() {
   if (path === "/signup") return <SignupPage />;
   if (path === "/forgot-password") return <ForgotPasswordPage />;
   if (path === "/reset-password") return <ResetPasswordPage />;
-  if (path === "/projects") return <RequireAuth><ProjectsPage /></RequireAuth>;
-  if (path === "/doc-qa") return <RequireAuth><DocQAPage /></RequireAuth>;
+  if (path === "/projects") return <RequireAuth><RequireAccess need="applications"><ProjectsPage /></RequireAccess></RequireAuth>;
+  if (path === "/doc-qa") return <RequireAuth><RequireAccess need="docqa"><DocQAPage /></RequireAccess></RequireAuth>;
   if (path === "/settings") return <RequireAuth><SettingsPage /></RequireAuth>;
 
   const m = matchPath("/projects/:id", path) ?? matchPath("/projects/:id/:page", path);
@@ -77,9 +88,11 @@ export function App() {
     const page = m.page ?? "";
     return (
       <RequireAuth>
-        <ProjectProvider projectId={Number(m.id)} key={m.id}>
-          <ProjectGate page={page} />
-        </ProjectProvider>
+        <RequireAccess need="applications">
+          <ProjectProvider projectId={Number(m.id)} key={m.id}>
+            <ProjectGate page={page} />
+          </ProjectProvider>
+        </RequireAccess>
       </RequireAuth>
     );
   }
