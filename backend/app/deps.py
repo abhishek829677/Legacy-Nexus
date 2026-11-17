@@ -56,6 +56,9 @@ def get_project(project_id: int, db: DB, user: CurrentUser) -> Project:
     project = db.get(Project, project_id)
     if project is None or (project.owner_id != user.id and user.role != "admin"):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+    from app.services.analysis_runner import expire_if_stale  # local: avoids an import cycle
+
+    expire_if_stale(db, project)
     return project
 
 
