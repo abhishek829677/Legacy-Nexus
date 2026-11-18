@@ -139,9 +139,11 @@ def build_semantic_index(project: ReadyProject, user: CurrentUser, db: DB, backg
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enable semantic search and choose an embedding model in Settings first")
     if semantic.is_building(project.id) or analysis_runner.is_busy(project):
         raise HTTPException(status.HTTP_409_CONFLICT, "Indexing or analysis is already running for this project")
+    semantic.mark_queued(db, project.id)  # the page keeps polling until a worker picks the job up and finishes
     try:
         jobs.submit(jobs.SEMANTIC_INDEX, project.id, background)
     except jobs.JobSubmitError as exc:
+        semantic.mark_failed(db, project.id, str(exc))
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
     audit.record(db, "semantic_index_started", user.id, f"project:{project.id}", request=request)
     state = semantic.index_state(db, project)
