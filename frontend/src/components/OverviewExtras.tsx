@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { LuChevronDown, LuChevronRight, LuHistory } from "react-icons/lu";
+import { fmtDate } from "../lib/format";
 import type { DataHotspot, RunChanges, SensitiveData } from "../lib/types";
 
 type Open = (file: string, line: number) => void;
 
 const list = (xs: string[], max = 4) => xs.length <= max ? xs.join(", ") : `${xs.slice(0, max).join(", ")} +${xs.length - max} more`;
-const when = (iso?: string | null) => iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "the last run";
+const when = (iso?: string | null) => iso ? fmtDate(iso) : "the last run";
 
 /** One line on what is different from the previous analysis. */
 export function ChangesStrip({ changes }: { changes: RunChanges }) {

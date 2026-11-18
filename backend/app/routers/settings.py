@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -13,6 +14,13 @@ from app.schemas import AIModelIn, AISettingsUpdate, EmbeddingSettingsUpdate
 from app.services import ai_config, audit, semantic
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+log = logging.getLogger(__name__)
+
+# Shown when a connection test fails. The provider's own error (status codes, raw response bodies) is written to
+# the server log and the audit log instead, so the page shows one plain sentence.
+MODEL_TEST_FAILED = "Could not connect to the AI model. Check the API key, model name and endpoint, then try again."
+EMBEDDING_TEST_FAILED = ("Could not connect to the embedding service. Check the API key, model name and endpoint, "
+                         "then try again.")
 
 
 @router.get("/providers")
@@ -82,8 +90,11 @@ def edit_model(model_id: int, body: AIModelIn, admin: AdminUser, db: DB, request
 def remove_model(model_id: int, admin: AdminUser, db: DB, request: Request) -> None:
     m = _model(db, model_id)
     detail = {"provider": m.provider, "model": m.model, "was_active": m.is_active}
-    ai_config.delete_model(db, m, admin.id)
+    successor = ai_config.delete_model(db, m, admin.id)
     audit.record(db, "ai_model_deleted", admin.id, f"ai_model:{model_id}", detail, request)
+    if successor is not None:  # the deleted model was active; the next one took over automatically
+        audit.record(db, "ai_model_activated", admin.id, f"ai_model:{successor.id}",
+                     {"provider": successor.provider, "model": successor.model, "automatic": True}, request)
 
 
 @router.post("/models/{model_id}/activate")
@@ -135,7 +146,8 @@ def _ping(cfg) -> dict:
         result = complete_json(cfg, "You are a connectivity check. Reply with JSON only.",
                                'Return exactly this JSON object: {"status": "ok"}')
     except LLMError as exc:
-        return {"ok": False, "message": str(exc)}
+        log.warning("AI model connection test failed (%s): %s", cfg.provider, exc)
+        return {"ok": False, "message": MODEL_TEST_FAILED}
     parsed = parse_json(result.text)
     ok = bool(parsed and str(parsed.get("status", "")).lower() == "ok")
     return {"ok": ok, "model": result.model, "latency_ms": result.latency_ms,
@@ -151,8 +163,9 @@ def test_ai(admin: AdminUser, db: DB, request: Request) -> dict:
         result = complete_json(cfg, "You are a connectivity check. Reply with JSON only.",
                                'Return exactly this JSON object: {"status": "ok"}')
     except LLMError as exc:
+        log.warning("AI connection test failed (%s): %s", cfg.provider, exc)
         audit.record(db, "ai_test_failed", admin.id, "ai_settings", {"error": str(exc)[:300]}, request)
-        return {"ok": False, "message": str(exc)}
+        return {"ok": False, "message": MODEL_TEST_FAILED}
     parsed = parse_json(result.text)
     ok = bool(parsed and str(parsed.get("status", "")).lower() == "ok")
     audit.record(db, "ai_test", admin.id, "ai_settings", {"ok": ok, "model": result.model}, request)
@@ -196,8 +209,9 @@ def test_embeddings(admin: AdminUser, db: DB, request: Request) -> dict:
     try:
         vectors = embed_texts(cfg, ["COMPUTE WS-INTEREST = WS-BALANCE * WS-RATE"], kind="query")
     except EmbeddingError as exc:
+        log.warning("Embedding connection test failed: %s", exc)
         audit.record(db, "embedding_test_failed", admin.id, "embedding_settings", {"error": str(exc)[:300]}, request)
-        return {"ok": False, "message": str(exc)}
+        return {"ok": False, "message": EMBEDDING_TEST_FAILED}
     latency = int((time.perf_counter() - started) * 1000)
     audit.record(db, "embedding_test", admin.id, "embedding_settings", {"dim": len(vectors[0])}, request)
     return {"ok": True, "dim": len(vectors[0]), "latency_ms": latency,

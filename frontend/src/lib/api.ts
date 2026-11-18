@@ -64,6 +64,29 @@ export const api = {
   patch: <T,>(path: string, body?: unknown) => request<T>("PATCH", path, body ?? {}),
   del: <T,>(path: string) => request<T>("DELETE", path),
   upload: <T,>(path: string, form: FormData) => request<T>("POST", path, form, true),
+  /** Multipart upload that reports bytes sent (fetch cannot report upload progress, XMLHttpRequest can). */
+  uploadWithProgress: <T,>(path: string, form: FormData, onProgress: (loaded: number, total: number) => void, onSent?: () => void) =>
+    new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${BASE}${path}`);
+      const token = tokenStore.get();
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
+      // Every byte has been sent; the server is now processing (small uploads may never report progress).
+      xhr.upload.onload = () => onSent?.();
+      xhr.onload = () => {
+        if (xhr.status === 401) { tokenStore.clear(); onUnauthorized(); }
+        let data: { detail?: unknown } | undefined;
+        try { data = JSON.parse(xhr.responseText); } catch { /* non-JSON body */ }
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(data as T);
+        let message = `Request failed (${xhr.status})`;
+        if (typeof data?.detail === "string") message = data.detail;
+        else if (Array.isArray(data?.detail)) message = data.detail.map((d: { msg: string }) => d.msg).join("; ");
+        reject(new ApiError(xhr.status, message));
+      };
+      xhr.onerror = () => reject(new ApiError(0, "Cannot reach the LegacyNexus server. Check that the backend is running."));
+      xhr.send(form);
+    }),
 };
 
 /** Download an authenticated file (CSV, ZIP, feature file) through the browser. */

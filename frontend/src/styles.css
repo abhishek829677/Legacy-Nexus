@@ -500,7 +500,8 @@ table.data tr.clickable:hover td { background: var(--surface-2); }
 
 .toast-wrap { position: fixed; bottom: 20px; right: 20px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
 .toast { background: var(--ink); color: #fff; padding: 12px 16px; border-radius: var(--r-sm); box-shadow: var(--shadow-2); font-size: 14px; max-width: 380px; animation: slidein 0.2s; }
-.toast.err { background: var(--red); }
+/* A deep red for the whole box: the bright --red is for small accents; white text on this is 6.6:1 */
+.toast.err { background: #b42318; border: 1px solid #912018; }
 
 .autocomplete { position: relative; }
 .ac-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-sm); box-shadow: var(--shadow-2); z-index: 30; max-height: 320px; overflow-y: auto; }
@@ -1032,3 +1033,73 @@ button.changes:hover { border-color: var(--line-strong); }
 .attach-chip .x { border: none; background: none; cursor: pointer; color: var(--text-3); display: grid; place-items: center; padding: 2px; border-radius: 50%; }
 .attach-chip .x:hover { background: var(--line); color: var(--text); }
 .attach-switch { height: 30px; width: auto; font-size: 13px; }
+
+/* ---------- per-file upload list (New project modal) ---------- */
+/* The padding leaves room for a pressed button's 1px nudge (motion.css .btn:active); without it the list
+   overflowed by 1px, a scrollbar appeared, the × slid out from under the pointer and the click was lost. */
+.upload-list { list-style: none; margin: 0; padding: 2px 4px 2px 0; display: flex; flex-direction: column; gap: 10px; max-height: 280px; overflow-x: hidden; overflow-y: auto; }
+.upload-item { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.upload-head { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.upload-icon { flex: none; color: var(--text-3); }
+.upload-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.upload-size { flex: none; color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.upload-remove { width: 22px; height: 22px; flex: none; }
+.upload-remove:active:not(:disabled) { transform: none; }
+.upload-bar { position: relative; height: 20px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; font-size: 11.5px; font-weight: 600; }
+.upload-label { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.upload-fill { position: absolute; inset: 0; background: var(--brand, #2456d3); transition: clip-path 0.2s ease, background 0.2s ease; }
+.upload-fill .upload-label { color: #fff; }
+.upload-bar.done .upload-fill { background: var(--green); }
+.upload-bar.failed .upload-fill { background: var(--red); }
+@media (prefers-reduced-motion: reduce) { .upload-fill { transition: none; } }
+
+/* ---------- loader screen while picked / dropped files are being read ---------- */
+.file-loader { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(16, 24, 40, 0.45); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); animation: fade 0.15s; }
+.file-loader-card { width: min(340px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-3); padding: 24px 22px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.file-loader-spinner { width: 34px; height: 34px; border-width: 3px; margin-bottom: 6px; }
+.file-loader-title { font-weight: 600; font-size: 15px; color: var(--text); }
+.file-loader-sub { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+
+/* ---------- JSON preview with full-value tooltip (audit log detail) ---------- */
+.json-preview { display: block; width: 100%; border: none; background: none; padding: 2px 0; margin: 0; text-align: left; cursor: default;
+  font-family: var(--font-mono); font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 4px; }
+.json-preview:hover, .json-preview[aria-expanded="true"] { color: var(--text); text-decoration: underline dotted; text-underline-offset: 3px; }
+.json-pop { position: fixed; z-index: 120; max-width: min(460px, calc(100vw - 16px)); max-height: min(360px, calc(100vh - 16px)); overflow: auto;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-sm); box-shadow: var(--shadow-3); padding: 10px 12px; }
+.json-pop pre { margin: 0; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.55; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.json-pop .j-key { color: var(--blue); }
+.json-pop .j-str { color: var(--green); }
+.json-pop .j-num { color: var(--violet); }
+.json-pop .j-bool { color: #b45309; }
+.json-pop .j-null { color: var(--text-3); }
+
+/* A saved secret shown masked: visibly read-only */
+.input.input-locked { background: var(--surface-2); color: var(--text-2); cursor: not-allowed; letter-spacing: 0.04em; }
+.input.input-locked:focus { box-shadow: none; border-color: var(--line); }
+
+/* ---------- toasts: text + close button ---------- */
+.toast { display: flex; align-items: flex-start; gap: 10px; padding-right: 8px; }
+.toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.45; padding-top: 1px; }
+.toast-close { flex: none; display: grid; place-items: center; width: 24px; height: 24px; margin: -2px 0 -2px 0; padding: 0; border: none; border-radius: 6px;
+  background: transparent; color: inherit; opacity: 0.75; cursor: pointer; }
+.toast-close:hover { opacity: 1; background: rgba(255, 255, 255, 0.16); }
+.toast-close:focus-visible { opacity: 1; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7); }
+
+/* ---------- ComboInput: text field with a suggestions dropdown ---------- */
+.combo { position: relative; }
+.combo-list { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-sm); box-shadow: var(--shadow-3); max-height: 232px; overflow-y: auto; }
+.combo-opt { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 6px;
+  font-family: var(--font-mono); font-size: 13px; color: var(--text); cursor: pointer; }
+.combo-opt.active { background: var(--brand-soft, var(--surface-2)); }
+.combo-opt[aria-selected="true"] { font-weight: 600; color: var(--brand-ink, var(--text)); }
+
+/* ---------- loader after upload: step checklist ---------- */
+.finish-card { width: min(380px, 100%); }
+.finish-steps { list-style: none; margin: 6px 0 4px; padding: 0; align-self: stretch; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.finish-steps li { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text-3); }
+.finish-steps li.done { color: var(--text-2); }
+.finish-steps li.now { color: var(--text); font-weight: 600; }
+.finish-mark { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 1.5px solid var(--line-strong); display: grid; place-items: center; }
+.finish-steps li.done .finish-mark { background: var(--green); border-color: var(--green); color: #fff; }
+.finish-steps li.now .finish-mark { border-color: var(--brand, var(--blue)); box-shadow: inset 0 0 0 4px var(--brand-soft, var(--blue-soft)); }

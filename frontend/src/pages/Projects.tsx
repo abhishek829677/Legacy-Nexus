@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { LuDatabase, LuFileText, LuFolderOpen, LuMessageSquareText, LuPlay, LuPlus, LuRefreshCw, LuSparkles, LuTrash2, LuUpload, LuX } from "react-icons/lu";
+import { createPortal } from "react-dom";
+import { LuCheck, LuDatabase, LuFileText, LuFolder, LuFolderOpen, LuMessageSquareText, LuPlay, LuPlus, LuRefreshCw, LuSparkles, LuTrash2, LuUpload, LuX } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
 import { usePageTour } from "../components/Tour";
 import { DASHBOARD_TOUR } from "../components/tours";
@@ -8,7 +9,8 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fmtDate, fmtNumber } from "../lib/format";
 import { useApi } from "../lib/hooks";
-import { DOC_ACCEPT, DOC_TYPES_LABEL, isDocFile, uploadDocuments, type DocUploadResult } from "../lib/docUpload";
+import { canPickDirectory, filesFromDirectory, filesFromDrop, pickDirectory, type DirectoryHandle } from "../lib/dropFiles";
+import { DOC_ACCEPT, DOC_TYPES_LABEL, fmtBytes, isDocFile, uploadDocuments, type DocUploadResult } from "../lib/docUpload";
 import { navigate } from "../lib/router";
 import type { Project } from "../lib/types";
 
@@ -187,9 +189,104 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
     folderInput.current?.setAttribute("webkitdirectory", "");
   }, []);
 
-  const add = (list: FileList | null) => {
-    if (!list) return;
-    setFiles((prev) => [...prev, ...Array.from(list)]);
+  // Upload progress, in bytes of file content sent so far (null = not started).
+  const [sent, setSent] = useState<number | null>(null);
+  const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "failed">("idle");
+
+  const resetUpload = () => { setSent(null); setUploadState("idle"); };
+
+  // Loader screen while the browser lists picked files or we walk a dropped folder (both can take seconds).
+  const [loading, setLoading] = useState<{ title: string; found?: number } | null>(null);
+  const reading = loading !== null;
+  const pickerOpen = useRef(false);
+
+  const add = (list: FileList | File[] | null) => {
+    if (!list || !list.length || busy) return;
+    // Copy now: a FileList is live and empties when the input is reset, before the state update runs.
+    const picked = Array.from(list);
+    resetUpload();
+    setFiles((prev) => [...prev, ...picked]);
+  };
+  const openPicker = (input: HTMLInputElement | null) => {
+    if (!input || busy || reading) return;
+    // Only the plain folder input (browsers without showDirectoryPicker) can take long enough to need the
+    // loader. Picked files arrive at once, and guessing from window focus left the loader up when a file
+    // dialog was cancelled without the browser sending "cancel".
+    pickerOpen.current = input === folderInput.current;
+    input.click();
+  };
+  const onPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    pickerOpen.current = false;
+    add(e.target.files);
+    e.target.value = ""; // so the same folder can be picked again
+    setLoading(null); // same render as the new list, so the loader stays until the files show
+  };
+  // Folder button: where the browser allows it we read the folder ourselves, so the loader can count files
+  // as they are found. Otherwise use the plain folder input (no count until the browser has listed it all).
+  const pickFolder = async () => {
+    if (busy || reading) return;
+    if (!canPickDirectory()) return openPicker(folderInput.current);
+    let dir: DirectoryHandle | null;
+    try {
+      dir = await pickDirectory();
+    } catch {
+      setError("The browser does not allow opening that folder (it may be a system folder). Choose a subfolder, or drag the folder in.");
+      return;
+    }
+    if (!dir) return; // picker closed
+    const title = "Reading the selected folder…";
+    setLoading({ title, found: 0 });
+    try {
+      add(await filesFromDirectory(dir, (found) => setLoading({ title, found })));
+    } finally {
+      setLoading(null);
+    }
+  };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setOver(false);
+    if (busy || reading) return;
+    setLoading({ title: "Reading the dropped files…", found: 0 });
+    filesFromDrop(e.dataTransfer, (found) => setLoading({ title: "Reading the dropped files…", found }))
+      .then(add)
+      .finally(() => setLoading(null));
+  };
+
+  // The page gets focus back when the file dialog closes; from then until "change" (files listed) or
+  // "cancel" (dialog dismissed) the browser is still reading the selection, so show the loader.
+  useEffect(() => {
+    const onFocus = () => { if (pickerOpen.current) setLoading({ title: "Loading the selected files…" }); };
+    const onCancel = () => { pickerOpen.current = false; setLoading(null); };
+    const inputs = [fileInput.current, folderInput.current];
+    window.addEventListener("focus", onFocus);
+    inputs.forEach((i) => i?.addEventListener("cancel", onCancel));
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      inputs.forEach((i) => i?.removeEventListener("cancel", onCancel));
+    };
+  }, []);
+  const removeFiles = (idx: number[]) => {
+    const drop = new Set(idx);
+    resetUpload();
+    setFiles((prev) => prev.filter((_, j) => !drop.has(j)));
+  };
+
+  // After the bytes are sent the server still unpacks and checks every file, then the analysis is started and
+  // documents are uploaded; this loader shows those steps so the page does not look stuck.
+  const [step, setStep] = useState<FinishStep | null>(null);
+  const [stepStarted, setStepStarted] = useState(0);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!step) return;
+    const t = window.setInterval(() => tick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [step]);
+  // The timer counts per visible step, so moving between parts of the same step does not restart it.
+  const goTo = (s: FinishStep | null) => {
+    setStep((prev) => {
+      if (!prev || !s || STEP_INDEX[prev] !== STEP_INDEX[s]) setStepStarted(Date.now());
+      return s;
+    });
   };
 
   const submit = async () => {
@@ -200,17 +297,35 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
     try {
       const p = await api.post<Project>("/projects", { name, description });
       const form = new FormData();
-      files.forEach((f) => form.append("files", f, (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name));
-      await api.upload(`/projects/${p.id}/files`, form);
+      files.forEach((f) => form.append("files", f, filePath(f)));
+      setSent(0);
+      setUploadState("uploading");
+      try {
+        // Parts go out in order, so bytes sent map onto the files one after another.
+        let storing = false;
+        const sentAll = () => { if (!storing) { storing = true; setSent(size); goTo("store"); } }; // the server is working now
+        await api.uploadWithProgress(`/projects/${p.id}/files`, form, (loaded, total) => {
+          setSent((loaded / Math.max(1, total)) * size);
+          if (loaded >= total) sentAll();
+        }, sentAll);
+      } catch (e) {
+        setUploadState("failed");
+        throw e;
+      }
+      setUploadState("done");
+      goTo("analyze");
       await api.post(`/projects/${p.id}/analyze`);
       // Documents go to Document Q&A; a failure here must not undo the project that was just created.
+      if (docs.length) goTo("docs");
       const docResult = docs.length ? await uploadDocuments(docs) : null;
+      goTo("open");
       toast(docResult?.uploaded.length
         ? `Code uploaded and analysis is running. ${docSummary(docResult)}`
         : "Upload complete. Analysis is running.");
       if (docResult?.failed.length) toast(docFailures(docResult), true);
       onCreated(p.id);
     } catch (e) {
+      goTo(null);
       setError((e as Error).message);
     } finally {
       setBusy(false);
@@ -219,14 +334,69 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
   const size = files.reduce((a, f) => a + f.size, 0);
 
+  // Where each file starts in the upload, and how far along it is (0-100).
+  const progress = (() => {
+    let start = 0;
+    return files.map((f) => {
+      const from = start;
+      start += f.size;
+      if (uploadState === "done" || uploadState === "failed") return 100;
+      if (sent === null) return 0;
+      if (f.size === 0) return sent >= from ? 100 : 0;
+      return Math.max(0, Math.min(100, ((sent - from) / f.size) * 100));
+    });
+  })();
+
+  // One row per picked folder, one row per single file. A folder's bar is the share of its bytes sent.
+  type Entry = { key: string; kind: "file" | "folder"; name: string; idx: number[] };
+  const entries: Entry[] = [];
+  const folderRows = new Map<string, Entry>();
+  files.forEach((f, i) => {
+    const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || "";
+    const top = rel.includes("/") ? rel.split("/")[0] : "";
+    if (!top) {
+      entries.push({ key: `file-${i}-${f.name}`, kind: "file", name: f.name, idx: [i] });
+      return;
+    }
+    let row = folderRows.get(top);
+    if (!row) {
+      row = { key: `folder-${top}`, kind: "folder", name: top, idx: [] };
+      folderRows.set(top, row);
+      entries.push(row);
+    }
+    row.idx.push(i);
+  });
+  const entryBytes = (e: Entry) => e.idx.reduce((a, i) => a + files[i].size, 0);
+  const entryPct = (e: Entry) => {
+    const bytes = entryBytes(e);
+    if (!bytes) return e.idx.reduce((a, i) => a + progress[i], 0) / e.idx.length;
+    return e.idx.reduce((a, i) => a + (progress[i] / 100) * files[i].size, 0) / bytes * 100;
+  };
+
   return (
     <Modal title="New project" onClose={onClose} width={620}
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={submit} disabled={busy}>
+        <button className="btn btn-primary" onClick={submit} disabled={busy || reading}>
           {busy ? <span className="spinner" /> : <LuPlay size={15} />} Upload and analyse
         </button>
       </>}>
+      {loading && createPortal(
+        <div className="file-loader" role="status" aria-live="polite">
+          <div className="file-loader-card">
+            <span className="spinner file-loader-spinner" aria-hidden="true" />
+            <div className="file-loader-title">{loading.title}</div>
+            <div className="file-loader-sub">
+              {loading.found !== undefined ? `${fmtNumber(loading.found)} files found so far` : "Large folders can take a few seconds."}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+      {step && createPortal(
+        <FinishLoader step={step} seconds={Math.floor((Date.now() - stepStarted) / 1000)} />,
+        document.body,
+      )}
       <div className="stack">
         <div className="field">
           <label htmlFor="pname">Application name</label>
@@ -241,27 +411,66 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
           className={`dropzone ${over ? "over" : ""}`}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }}
           onDragLeave={() => setOver(false)}
-          onDrop={(e) => { e.preventDefault(); setOver(false); add(e.dataTransfer.files); }}
-          onClick={() => fileInput.current?.click()}
+          onDrop={onDrop}
+          onClick={() => openPicker(fileInput.current)}
           role="button" tabIndex={0}
-          onKeyDown={(e) => e.key === "Enter" && fileInput.current?.click()}
+          onKeyDown={(e) => e.key === "Enter" && openPicker(fileInput.current)}
+          aria-busy={reading}
         >
           <LuUpload size={28} color="var(--text-3)" />
-          <div style={{ fontWeight: 500, marginTop: 8 }}>Drop source files or a .zip here, or click to browse</div>
+          <div style={{ fontWeight: 500, marginTop: 8 }}>Drop source files, folders or a .zip here, or click to browse</div>
           <div className="hint" style={{ marginTop: 4 }}>.cbl .cob .cpy .jcl .sql .ddl .yaml .json .md .txt · extension-less mainframe members are detected by content</div>
-          <input ref={fileInput} type="file" multiple hidden onChange={(e) => add(e.target.files)} />
+          <input ref={fileInput} type="file" multiple hidden onClick={(e) => e.stopPropagation()} onChange={onPicked} />
         </div>
         <div className="row">
-          <button className="btn btn-sm" type="button" onClick={() => folderInput.current?.click()}><LuFolderOpen size={14} /> Add a whole folder</button>
-          <input ref={folderInput} type="file" multiple hidden onChange={(e) => add(e.target.files)} />
+          <button className="btn btn-sm" type="button" onClick={pickFolder}><LuFolderOpen size={14} /> Add a whole folder</button>
+          <input ref={folderInput} type="file" multiple hidden onChange={onPicked} />
           {files.length > 0 && (
             <>
-              <span className="subtle">{files.length} file(s) · {(size / 1024 / 1024).toFixed(2)} MB</span>
               <div className="spacer" />
-              <button className="btn btn-ghost btn-sm" onClick={() => setFiles([])}><LuRefreshCw size={14} /> Clear</button>
+              <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { resetUpload(); setFiles([]); }}><LuRefreshCw size={14} /> Clear</button>
             </>
           )}
         </div>
+        {files.length > 0 && (
+          <ul className="upload-list" aria-label="Files to upload">
+            {entries.map((e) => {
+              const pct = Math.min(100, entryPct(e));
+              const state = uploadState === "failed" ? "failed" : pct >= 100 && uploadState !== "idle" ? "done" : "";
+              const label = state === "failed" ? "Failed" : state === "done" ? "Uploaded" : `${Math.floor(pct)}%`;
+              const folder = e.kind === "folder";
+              return (
+                <li key={e.key} className="upload-item">
+                  <div className="upload-head">
+                    {folder
+                      ? <LuFolder size={14} aria-hidden="true" className="upload-icon" />
+                      : <LuFileText size={14} aria-hidden="true" className="upload-icon" />}
+                    <span className="upload-name" title={e.name}>{e.name}</span>
+                    <span className="upload-size">
+                      {folder ? `${plural(e.idx.length, "file", "files")} · ` : ""}{fmtBytes(entryBytes(e))}
+                    </span>
+                    {!busy && uploadState !== "done" && (
+                      <button type="button" className="btn btn-ghost btn-icon btn-sm upload-remove"
+                        aria-label={`Remove ${folder ? "folder " : ""}${e.name}`} onClick={() => removeFiles(e.idx)}>
+                        <LuX size={12} />
+                      </button>
+                    )}
+                  </div>
+                  {/* Bars only once the upload has started; before that the list is just what will be sent. */}
+                  {uploadState !== "idle" && (
+                    <div className={`upload-bar ${state}`} role="progressbar" aria-label={`${e.name}: ${label}`}
+                      aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(pct)}>
+                      <span className="upload-label">{label}</span>
+                      <span className="upload-fill" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }} aria-hidden="true">
+                        <span className="upload-label">{label}</span>
+                      </span>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
         <div className="field" style={{ marginTop: 4 }}>
           <div className="label">Documents for Document Q&amp;A <span className="subtle" style={{ fontWeight: 400 }}>(optional)</span></div>
           <span className="hint" style={{ marginTop: 0, marginBottom: 6 }}>Specifications, runbooks or manuals. You can ask questions about them in Document Q&amp;A.</span>
@@ -272,6 +481,45 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
     </Modal>
   );
 }
+
+type FinishStep = "store" | "analyze" | "docs" | "open";
+const FINISH_STEPS = ["Files uploaded", "Checking and storing the files", "Opening the project for analysis"];
+// Three visible steps. Queuing the analysis (instant) and uploading documents happen during the second one.
+const STEP_INDEX: Record<FinishStep, number> = { store: 1, analyze: 1, docs: 1, open: 2 };
+const STEP_TITLE: Record<FinishStep, string> = {
+  store: "Checking and storing the files", analyze: "Checking and storing the files",
+  docs: "Uploading documents for Document Q&A", open: "Opening the project for analysis",
+};
+
+/** Loader shown from the end of the upload until the project page opens. */
+function FinishLoader({ step, seconds }: { step: FinishStep; seconds: number }) {
+  const current = STEP_INDEX[step];
+  return (
+    <div className="file-loader" role="status" aria-live="polite">
+      <div className="file-loader-card finish-card">
+        <span className="spinner file-loader-spinner" aria-hidden="true" />
+        <div className="file-loader-title">{STEP_TITLE[step]}…</div>
+        <ol className="finish-steps">
+          {FINISH_STEPS.map((label, i) => (
+            <li key={label} className={i < current ? "done" : i === current ? "now" : ""}>
+              <span className="finish-mark" aria-hidden="true">{i < current ? <LuCheck size={12} /> : null}</span>
+              {label}
+            </li>
+          ))}
+        </ol>
+        <div className="file-loader-sub">
+          {current === 1 && step !== "docs" && seconds >= 3
+            ? `${seconds} s so far. Large uploads and .zip files take longer: every file is unpacked and checked.`
+            : seconds >= 3 ? `${seconds} s so far…`
+            : "The analysis itself runs next, on the project page, where you can follow its progress."}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A file's path inside a picked folder, or just its name. */
+const filePath = (f: File) => (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const docSummary = (r: DocUploadResult) => `${plural(r.uploaded.length, "document", "documents")} added to Document Q&A.`;

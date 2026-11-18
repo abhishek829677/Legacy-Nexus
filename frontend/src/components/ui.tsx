@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { LuInbox, LuX } from "react-icons/lu";
 
 /* ---------------- toasts ---------------- */
@@ -10,17 +10,44 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const push = useCallback((text: string, error = false) => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, text, error }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), error ? 6000 : 3500);
   }, []);
+  const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
   return (
     <ToastContext.Provider value={push}>
       {children}
       <div className="toast-wrap" role="status" aria-live="polite">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.error ? "err" : ""}`}>{t.text}</div>
-        ))}
+        {toasts.map((t) => <ToastItem key={t.id} toast={t} onClose={() => dismiss(t.id)} />)}
       </div>
     </ToastContext.Provider>
+  );
+}
+
+export const TOAST_MS = { info: 3500, error: 6000 };
+
+/**
+ * One toast. It closes itself after a few seconds; hovering it (or focusing its close button) pauses that,
+ * and moving away starts the countdown again from the beginning. The × closes it at once.
+ */
+function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
+  const duration = toast.error ? TOAST_MS.error : TOAST_MS.info;
+  const timer = useRef<number | undefined>(undefined);
+  const close = useRef(onClose);
+  close.current = onClose; // a new function every render; the timer must not restart because of that
+  const start = useCallback(() => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => close.current(), duration);
+  }, [duration]);
+  const pause = () => window.clearTimeout(timer.current);
+  useEffect(() => {
+    start();
+    return () => window.clearTimeout(timer.current);
+  }, [start]);
+  return (
+    <div className={`toast ${toast.error ? "err" : ""}`} onMouseEnter={pause} onMouseLeave={start}
+      onFocus={pause} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) start(); }}>
+      <span className="toast-text">{toast.text}</span>
+      <button type="button" className="toast-close" aria-label="Close notification" onClick={onClose}><LuX size={15} /></button>
+    </div>
   );
 }
 

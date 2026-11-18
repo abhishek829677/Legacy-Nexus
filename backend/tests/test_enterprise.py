@@ -95,7 +95,7 @@ def test_model_library_add_switch_delete(client, auth):
     assert ai["provider"] == "anthropic" and ai["model"] == "claude-sonnet-5-5" and ai["configured"]
 
     assert client.delete(f"/api/settings/models/{claude['id']}", headers=auth).status_code == 204
-    assert client.get("/api/settings/ai", headers=auth).json()["provider"] == "none"  # nothing active now
+    assert client.get("/api/settings/ai", headers=auth).json()["provider"] == "gemini"  # the remaining model took over
     client.post(f"/api/settings/models/{gemini['id']}/activate", headers=auth)
     assert client.get("/api/settings/ai", headers=auth).json()["provider"] == "gemini"
     client.post("/api/settings/models/deactivate", headers=auth)
@@ -136,3 +136,80 @@ def test_file_level_business_map(client, auth, sample_project):
     assert "NIGHTLY.jcl runs PAYMENT.CBL." in sentences
     assert any(s.startswith("PAYMENT.CBL saves data to Payment ledger") for s in sentences)
     assert "schema.sql defines Customer master." in sentences
+
+
+def test_model_cannot_be_saved_without_its_required_fields(client, auth):
+    before = len(client.get("/api/settings/models", headers=auth).json())
+    empty = client.post("/api/settings/models", json={"provider": "anthropic", "model": "", "api_key": ""}, headers=auth)
+    assert empty.status_code == 400 and empty.json()["detail"] == "Enter the API key and model name to save this model."
+    no_key = client.post("/api/settings/models", json={"provider": "gemini", "model": "gemini-2.5-flash"}, headers=auth)
+    assert no_key.status_code == 400 and "API key" in no_key.json()["detail"]
+    azure = client.post("/api/settings/models", json={"provider": "azure_openai", "api_key": "k-0123456789"}, headers=auth)
+    assert azure.status_code == 400 and azure.json()["detail"] == "Enter the endpoint and deployment name to save this model."
+    assert len(client.get("/api/settings/models", headers=auth).json()) == before  # nothing was saved
+
+    # Ollama runs locally and needs no key; an edit keeps the key already saved but cannot blank required fields.
+    ok = client.post("/api/settings/models", json={"provider": "ollama", "model": "llama3.1"}, headers=auth)
+    assert ok.status_code == 201
+    claude = client.post("/api/settings/models", json={"provider": "anthropic", "model": "claude-x", "api_key": "sk-ant-0123456789"},
+                         headers=auth).json()
+    assert client.put(f"/api/settings/models/{claude['id']}", json={"name": "Renamed"}, headers=auth).status_code == 200
+    blanked = client.put(f"/api/settings/models/{claude['id']}", json={"model": ""}, headers=auth)
+    assert blanked.status_code == 400
+    assert next(m for m in client.get("/api/settings/models", headers=auth).json() if m["id"] == claude["id"])["model"] == "claude-x"
+    for m in (ok.json(), claude):
+        client.delete(f"/api/settings/models/{m['id']}", headers=auth)
+
+
+def test_failed_model_test_shows_a_generic_message(client, auth, monkeypatch, caplog):
+    from app.llm.providers import LLMError
+    from app.routers import settings as settings_router
+
+    def boom(*_a, **_k):
+        raise LLMError('anthropic returned HTTP 401: {"type":"error","error":{"type":"authentication_error"}}')
+
+    monkeypatch.setattr(settings_router, "complete_json", boom)
+    m = client.post("/api/settings/models", json={"provider": "anthropic", "model": "claude-x", "api_key": "sk-ant-0123456789"},
+                    headers=auth).json()
+    try:
+        with caplog.at_level("WARNING", logger="app.routers.settings"):
+            r = client.post(f"/api/settings/models/{m['id']}/test", headers=auth).json()
+        assert r["ok"] is False and r["message"] == settings_router.MODEL_TEST_FAILED
+        assert "HTTP 401" not in r["message"] and "anthropic returned" not in r["message"]
+        assert "HTTP 401" in caplog.text  # the real reason is still in the server log
+    finally:
+        client.delete(f"/api/settings/models/{m['id']}", headers=auth)
+
+
+def test_deleting_the_active_model_switches_to_the_next_one(client, auth):
+    def add(**body):
+        r = client.post("/api/settings/models", json=body, headers=auth)
+        assert r.status_code == 201, r.text
+        return r.json()
+
+    def active():
+        return [m for m in client.get("/api/settings/models", headers=auth).json() if m["is_active"]]
+
+    for m in client.get("/api/settings/models", headers=auth).json():  # start from an empty library
+        client.delete(f"/api/settings/models/{m['id']}", headers=auth)
+    main = add(name="Main", provider="anthropic", model="claude-main", api_key="sk-ant-main-0123456789")
+    small = add(name="Small", provider="ollama", model="llama3.1:8b", is_small=True)
+    newest = add(name="Newest", provider="openai", model="gpt-new", api_key="sk-new-0123456789abcdef")
+    backup = add(name="Backup", provider="gemini", model="gemini-x", api_key="gem-0123456789abcdef", is_fallback=True)
+    client.post(f"/api/settings/models/{main['id']}/activate", headers=auth)
+
+    client.delete(f"/api/settings/models/{main['id']}", headers=auth)
+    assert [m["name"] for m in active()] == ["Backup"]  # the fallback model is preferred
+    assert client.get("/api/settings/ai", headers=auth).json()["model"] == "gemini-x"
+
+    client.delete(f"/api/settings/models/{backup['id']}", headers=auth)
+    assert [m["name"] for m in active()] == ["Newest"]  # then a full-size model before the small one
+
+    client.delete(f"/api/settings/models/{newest['id']}", headers=auth)
+    assert [m["name"] for m in active()] == ["Small"]  # a small model is still better than none
+
+    client.delete(f"/api/settings/models/{small['id']}", headers=auth)
+    assert active() == [] and client.get("/api/settings/ai", headers=auth).json()["provider"] == "none"
+
+    log = client.get("/api/settings/audit", params={"action": "ai_model_activated", "limit": 5}, headers=auth).json()["items"]
+    assert log[0]["detail"].get("automatic") is True
