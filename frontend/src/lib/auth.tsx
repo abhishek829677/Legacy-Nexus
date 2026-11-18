@@ -3,14 +3,32 @@ import { api, setUnauthorizedHandler, tokenStore } from "./api";
 import { navigate } from "./router";
 import type { DocRole, User } from "./types";
 
-/** The perspective a person signs in with. Document Q&A answers are written for this role. */
+/** The perspective a person signs in with. Decides Document Q&A phrasing and which sections are available. */
 export const SIGNIN_ROLES: { id: DocRole; label: string; hint: string }[] = [
   { id: "business", label: "Business Person", hint: "Requirements, rules, processes and outcomes" },
   { id: "developer", label: "Developer", hint: "Architecture, logic, data and constraints" },
   { id: "tester", label: "Tester", hint: "Test scenarios, edge cases and risks" },
-  { id: "end_user", label: "End User", hint: "Plain steps and expected behaviour" },
 ];
 const ROLE_KEY = "legacynexus.signinRole";
+
+/** Workspace sections a sign-in role may open. Settings is always available. */
+export type Access = { applications: boolean; docqa: boolean };
+
+const ROLE_ACCESS: Record<DocRole, Access> = {
+  developer: { applications: true, docqa: true }, // full access
+  tester: { applications: true, docqa: false }, // application access only
+  business: { applications: false, docqa: true }, // Document Q&A only
+  end_user: { applications: false, docqa: true }, // legacy role, no longer offered at sign-in
+};
+
+export function accessFor(role: DocRole): Access {
+  return ROLE_ACCESS[role] ?? { applications: true, docqa: true };
+}
+
+/** Where a role should land after signing in. */
+export function landingPath(role: DocRole): string {
+  return accessFor(role).applications ? "/projects" : "/doc-qa";
+}
 
 function storedRole(): DocRole {
   try {

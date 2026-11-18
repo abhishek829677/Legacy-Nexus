@@ -4,7 +4,7 @@ import {
   LuLogOut, LuMessageSquareText, LuPanelLeftClose, LuPanelLeftOpen, LuRadar, LuRocket, LuScale, LuSearch, LuSettings, LuUserRound, LuWorkflow,
 } from "react-icons/lu";
 import { CommandPalette, isMac } from "./CommandPalette";
-import { useAuth } from "../lib/auth";
+import { accessFor, useAuth } from "../lib/auth";
 import { initials } from "../lib/format";
 import { Link, navigate, useLocation } from "../lib/router";
 import { useOptionalProject } from "./ProjectContext";
@@ -41,6 +41,8 @@ const ROLE_LABEL: Record<string, string> = { admin: "Admin", analyst: "Analyst",
 
 export function AppShell({ title, actions, children, wide }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; wide?: boolean }) {
   const { path } = useLocation();
+  const { signinRole } = useAuth();
+  const access = accessFor(signinRole);
   const { replay, available: guideAvailable } = useTour();
   const ctx = useOptionalProject();
   const project = ctx?.project;
@@ -58,13 +60,17 @@ export function AppShell({ title, actions, children, wide }: { title?: ReactNode
           <span>LegacyNexus<small>Application intelligence</small></span>
         </Link>
         <div className="nav-group" style={{ paddingTop: 4 }}>Workspace</div>
-        <Link to="/projects" className={`nav-item ${path === "/projects" ? "active" : ""}`} data-tour="nav-projects">
-          <LuFolderKanban size={17} /> Applications
-        </Link>
-        <Link to="/doc-qa" className={`nav-item ${path === "/doc-qa" ? "active" : ""}`}>
-          <LuFileText size={17} /> Document Q&amp;A
-        </Link>
-        {project && (
+        {access.applications && (
+          <Link to="/projects" className={`nav-item ${path === "/projects" ? "active" : ""}`} data-tour="nav-projects">
+            <LuFolderKanban size={17} /> Applications
+          </Link>
+        )}
+        {access.docqa && (
+          <Link to="/doc-qa" className={`nav-item ${path === "/doc-qa" ? "active" : ""}`}>
+            <LuFileText size={17} /> Document Q&amp;A
+          </Link>
+        )}
+        {access.applications && project && (
           <>
             <div className="project-card" style={{ marginTop: 14 }}>
               <div className="name" title={project.name}>{project.name}</div>
