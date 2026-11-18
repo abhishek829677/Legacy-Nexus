@@ -5,7 +5,8 @@ import { fmtDate } from "../lib/format";
 import { useApi } from "../lib/hooks";
 import { ErrorBox, Loading, useToast } from "./ui";
 
-type Provider = { label: string; fields: string[]; default_base_url: string; default_api_version?: string; model_suggestions: string[]; key_hint: string; base_url_hint?: string };
+type Provider = { label: string; fields: string[]; default_base_url: string; default_api_version?: string; model_suggestions: string[]; key_hint: string; base_url_hint?: string;
+  model_notes?: Record<string, string>; fixed_models?: boolean; local?: boolean };
 export type EmbeddingSettings = {
   enabled: boolean; provider: string; model: string; base_url: string; api_version: string; deployment: string;
   api_key_set: boolean; api_key_masked: string; reuse_llm_key: boolean; batch_size: number; max_chars: number;
@@ -34,7 +35,8 @@ export function SemanticSettings({ isAdmin }: { isAdmin: boolean }) {
   const provider = form.provider && form.provider !== "none" ? providers[form.provider] : null;
   const has = (f: string) => provider?.fields.includes(f);
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
-  const local = form.provider === "ollama";
+  const local = !!provider?.local;
+  const builtin = form.provider === "builtin";
 
   const pickProvider = (key: string) => {
     const p = providers[key];
@@ -100,10 +102,16 @@ export function SemanticSettings({ isAdmin }: { isAdmin: boolean }) {
           </div>
           {provider && <div className="hint" style={{ marginTop: 8 }}>{provider.label}</div>}
         </div>
+        {builtin && (
+          <div className="hint">
+            Runs inside LegacyNexus on its own CPU: no API key, no cost per use, and code never leaves the server.
+            Indexing a large application takes longer than with a cloud provider.
+          </div>
+        )}
         {provider && !local && (
           <div className="warn-box">
             Building the index sends every code chunk (not just the excerpts used for answers) to {provider.label.split(" (")[0]}.
-            For confidential code, use Ollama or a private endpoint.
+            For confidential code, use Built-in, Ollama or a private endpoint.
           </div>
         )}
         {provider && (
@@ -111,9 +119,18 @@ export function SemanticSettings({ isAdmin }: { isAdmin: boolean }) {
             {has("model") && (
               <div className="field">
                 <label htmlFor="emodel">Embedding model</label>
-                <input id="emodel" className="input input-mono" list="emodel-suggestions" value={form.model ?? ""} disabled={!isAdmin} onChange={(e) => set("model", e.target.value)} />
-                <datalist id="emodel-suggestions">{provider.model_suggestions.map((m) => <option key={m} value={m} />)}</datalist>
-                <span className="hint">{local ? "Pull it first, e.g. ollama pull nomic-embed-text" : "Pick a suggestion or type any embedding model id."}</span>
+                {provider.fixed_models ? (
+                  <select id="emodel" className="select input-mono" value={form.model ?? ""} disabled={!isAdmin} onChange={(e) => set("model", e.target.value)}>
+                    {provider.model_suggestions.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                ) : (
+                  <>
+                    <input id="emodel" className="input input-mono" list="emodel-suggestions" value={form.model ?? ""} disabled={!isAdmin} onChange={(e) => set("model", e.target.value)} />
+                    <datalist id="emodel-suggestions">{provider.model_suggestions.map((m) => <option key={m} value={m} />)}</datalist>
+                  </>
+                )}
+                <span className="hint">{provider.model_notes?.[form.model ?? ""]
+                  ?? (form.provider === "ollama" ? "Pull it first, e.g. ollama pull nomic-embed-text" : "Pick a suggestion or type any embedding model id.")}</span>
               </div>
             )}
             {has("deployment") && (

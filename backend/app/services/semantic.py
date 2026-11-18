@@ -4,13 +4,14 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import SessionLocal
 from app.engine.vectors import get_store
-from app.llm.embeddings import EMBEDDING_CATALOG, EmbeddingConfig, embed_texts
+from app.llm.embeddings import BUILTIN_MODELS, EMBEDDING_CATALOG, EmbeddingConfig, embed_texts
 from app.models import AISettings, EmbeddingIndex, EmbeddingSettings, Project
 from app.security import decrypt_secret, encrypt_secret, mask_secret
 from app.services import artifacts
@@ -86,6 +87,12 @@ def update(db: Session, row: EmbeddingSettings, data: dict, user_id: int) -> Emb
     for field in EDITABLE:
         if field in data and data[field] is not None:
             setattr(row, field, data[field].strip() if isinstance(data[field], str) else data[field])
+    if row.provider == "builtin":  # only the models bundled with the app can run
+        if not data.get("model") and row.model not in BUILTIN_MODELS:  # none given: use the default, not the
+            row.model = next(iter(BUILTIN_MODELS))                     # previous provider's model name
+        elif row.model not in BUILTIN_MODELS:
+            db.rollback()
+            raise ValueError(f"'{row.model}' is not a built-in model. Choose one of: {', '.join(BUILTIN_MODELS)}")
     if data.get("clear_api_key"):
         row.encrypted_api_key = ""
     elif data.get("api_key"):
@@ -112,6 +119,7 @@ def index_state(db: Session, project: Project) -> dict:
     row = get_row(db)
     cfg = to_config(db, row)
     idx = db.get(EmbeddingIndex, project.id)
+    _expire_if_lost(db, idx)
     configured = row.enabled and cfg.configured
     state = {
         "enabled": configured,
@@ -139,6 +147,32 @@ def index_state(db: Session, project: Project) -> dict:
     return state
 
 
+QUEUED_TIMEOUT = timedelta(minutes=30)  # a queued or running build that saved no progress for this long is lost
+
+
+def mark_queued(db: Session, project_id: int) -> None:
+    """Show the build as under way as soon as it is requested; on a queue it may take a while to start."""
+    idx = db.get(EmbeddingIndex, project_id) or EmbeddingIndex(project_id=project_id)
+    db.add(idx)
+    idx.status, idx.error, idx.embedded_count = "building", None, 0
+    db.commit()
+
+
+def mark_failed(db: Session, project_id: int, error: str) -> None:
+    idx = db.get(EmbeddingIndex, project_id)
+    if idx:
+        idx.status, idx.error = "failed", error[:2000]
+        db.commit()
+
+
+def _expire_if_lost(db: Session, idx: EmbeddingIndex | None) -> None:
+    if idx is None or idx.status != "building" or is_building(idx.project_id) or idx.updated_at is None:
+        return
+    updated = idx.updated_at if idx.updated_at.tzinfo else idx.updated_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) - updated > QUEUED_TIMEOUT:
+        mark_failed(db, idx.project_id, "Indexing stopped responding. Rebuild the index.")
+
+
 def is_building(project_id: int) -> bool:
     with _lock:
         return project_id in _building
@@ -156,7 +190,11 @@ def build_index(project_id: int) -> None:
     try:
         project = db.get(Project, project_id)
         cfg = active_config(db)
-        if project is None or cfg is None or project.status != "ready":
+        if project is None:
+            return
+        if cfg is None or project.status != "ready":  # settings or project changed while the job waited
+            mark_failed(db, project_id, "Semantic search is off or the project is not analysed. Check Settings and rebuild."
+                        if cfg is None else "The project is being analysed again. Rebuild the index when it is ready.")
             return
         chunks = artifacts.load(db, project_id, "chunks") or []
         idx = db.get(EmbeddingIndex, project_id) or EmbeddingIndex(project_id=project_id)

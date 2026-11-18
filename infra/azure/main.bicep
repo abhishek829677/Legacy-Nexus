@@ -410,7 +410,11 @@ var openAIEnv = deployOpenAI ? [
   { name: 'EMBEDDING_BASE_URL', value: openAIEndpoint }
   { name: 'EMBEDDING_DEPLOYMENT', value: openAIEmbeddingModel }
   { name: 'EMBEDDING_API_VERSION', value: openAIApiVersion }
-] : []
+] : [
+  // No Azure OpenAI: semantic search uses the model built into the image (no key, nothing leaves Azure).
+  { name: 'EMBEDDING_PROVIDER', value: 'builtin' }
+  { name: 'EMBEDDING_MODEL', value: 'sentence-transformers/all-MiniLM-L6-v2' }
+]
 
 var backendEnv = concat([
   { name: 'DEPLOYMENT_PROFILE', value: 'cloud' }
