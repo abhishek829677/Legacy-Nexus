@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-<<<<<<< HEAD
 import { createPortal } from "react-dom";
-import { LuCheck, LuDatabase, LuFileText, LuFolder, LuFolderOpen, LuMessageSquareText, LuPlay, LuPlus, LuRefreshCw, LuSparkles, LuTrash2, LuUpload, LuX } from "react-icons/lu";
-=======
-import { LuDatabase, LuFileText, LuFolderOpen, LuGitBranch, LuMessageSquareText, LuPlay, LuPlus, LuRefreshCw, LuSparkles, LuTrash2, LuUpload, LuX } from "react-icons/lu";
->>>>>>> 32ec541 (UI enhancement and repo loading via url)
+import { LuCheck, LuDatabase, LuFileText, LuFolder, LuFolderOpen, LuGitBranch, LuMessageSquareText, LuPlay, LuPlus, LuRefreshCw, LuSparkles, LuTrash2, LuUpload, LuX } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
 import { usePageTour } from "../components/Tour";
 import { DASHBOARD_TOUR } from "../components/tours";
@@ -500,7 +496,6 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 }
 
-<<<<<<< HEAD
 type FinishStep = "store" | "analyze" | "docs" | "open";
 const FINISH_STEPS = ["Files uploaded", "Checking and storing the files", "Opening the project for analysis"];
 // Three visible steps. Queuing the analysis (instant) and uploading documents happen during the second one.
@@ -540,7 +535,6 @@ function FinishLoader({ step, seconds }: { step: FinishStep; seconds: number }) 
 /** A file's path inside a picked folder, or just its name. */
 const filePath = (f: File) => (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
 
-=======
 /** Create a project by cloning a public git repository URL. */
 function ImportRepoModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
   const toast = useToast();
@@ -669,7 +663,6 @@ function ImportRepoModal({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 }
 
->>>>>>> 32ec541 (UI enhancement and repo loading via url)
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const docSummary = (r: DocUploadResult) => `${plural(r.uploaded.length, "document", "documents")} added to Document Q&A.`;
 const docFailures = (r: DocUploadResult) =>

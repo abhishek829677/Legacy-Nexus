@@ -1034,7 +1034,6 @@ button.changes:hover { border-color: var(--line-strong); }
 .attach-chip .x:hover { background: var(--line); color: var(--text); }
 .attach-switch { height: 30px; width: auto; font-size: 13px; }
 
-<<<<<<< HEAD
 /* ---------- per-file upload list (New project modal) ---------- */
 /* The padding leaves room for a pressed button's 1px nudge (motion.css .btn:active); without it the list
    overflowed by 1px, a scrollbar appeared, the × slid out from under the pointer and the click was lost. */
@@ -1104,7 +1103,7 @@ button.changes:hover { border-color: var(--line-strong); }
 .finish-mark { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 1.5px solid var(--line-strong); display: grid; place-items: center; }
 .finish-steps li.done .finish-mark { background: var(--green); border-color: var(--green); color: #fff; }
 .finish-steps li.now .finish-mark { border-color: var(--brand, var(--blue)); box-shadow: inset 0 0 0 4px var(--brand-soft, var(--blue-soft)); }
-=======
+
 /* ==========================================================================
    PREMIUM POLISH LAYER
    A cohesive depth + refinement pass over the chrome (sidebar, topbar) and the
@@ -1662,4 +1661,3 @@ body { background: #e6f3f9; }
 /* Status pills stay legible but cool to the theme. */
 .tag-blue { background: var(--brand-soft); color: var(--brand-ink); border-color: #c6e7f1; }
 .nav-item.active svg { color: #fff; }
->>>>>>> 32ec541 (UI enhancement and repo loading via url)
