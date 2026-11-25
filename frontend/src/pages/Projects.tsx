@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+<<<<<<< HEAD
 import { createPortal } from "react-dom";
 import { LuCheck, LuDatabase, LuFileText, LuFolder, LuFolderOpen, LuMessageSquareText, LuPlay, LuPlus, LuRefreshCw, LuSparkles, LuTrash2, LuUpload, LuX } from "react-icons/lu";
+=======
+import { LuDatabase, LuFileText, LuFolderOpen, LuGitBranch, LuMessageSquareText, LuPlay, LuPlus, LuRefreshCw, LuSparkles, LuTrash2, LuUpload, LuX } from "react-icons/lu";
+>>>>>>> 32ec541 (UI enhancement and repo loading via url)
 import { AppShell } from "../components/AppShell";
 import { usePageTour } from "../components/Tour";
 import { DASHBOARD_TOUR } from "../components/tours";
 import { EmptyState, Loading, Modal, useToast } from "../components/ui";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { fmtDate, fmtNumber } from "../lib/format";
+import { fmtDate, fmtNumber, initials } from "../lib/format";
 import { useApi } from "../lib/hooks";
 import { canPickDirectory, filesFromDirectory, filesFromDrop, pickDirectory, type DirectoryHandle } from "../lib/dropFiles";
 import { DOC_ACCEPT, DOC_TYPES_LABEL, fmtBytes, isDocFile, uploadDocuments, type DocUploadResult } from "../lib/docUpload";
@@ -19,6 +23,7 @@ export function ProjectsPage() {
   const toast = useToast();
   const { data: projects, loading, reload } = useApi<Project[]>("/projects");
   const [creating, setCreating] = useState(false);
+  const [importingRepo, setImportingRepo] = useState(false);
   const [uploadingDocs, setUploadingDocs] = useState(false);
   const [busySample, setBusySample] = useState(false);
   const welcomed = Boolean(user?.preferences?.welcome_seen);
@@ -58,22 +63,29 @@ export function ProjectsPage() {
 
   return (
     <AppShell title="Projects">
-      <div className="page-head">
-        <div>
+      <div className="app-hero">
+        <div className="app-hero-glow" aria-hidden="true" />
+        <div className="app-hero-copy">
+          <span className="app-hero-eyebrow">Workspace</span>
           <h1>Applications</h1>
           <p>Each project is one legacy application: its sources, its knowledge graph and everything derived from it.</p>
         </div>
-        <div className="row-wrap">
+        <div className="row-wrap app-hero-actions">
           {canWrite && (
             <button className="btn" onClick={loadSample} disabled={busySample} data-tour="load-sample">
               {busySample ? <span className="spinner" /> : <LuSparkles size={16} />} Load sample application
+            </button>
+          )}
+          {canWrite && (
+            <button className="btn" onClick={() => setImportingRepo(true)} data-tour="import-repo">
+              <LuGitBranch size={16} /> Import from repository
             </button>
           )}
           <button className="btn" onClick={() => setUploadingDocs(true)} data-tour="upload-docs">
             <LuFileText size={16} /> Upload documents
           </button>
           {canWrite && (
-            <button className="btn btn-primary" onClick={() => setCreating(true)} data-tour="new-project">
+            <button className="btn btn-hero-primary" onClick={() => setCreating(true)} data-tour="new-project">
               <LuPlus size={16} /> New project
             </button>
           )}
@@ -99,8 +111,13 @@ export function ProjectsPage() {
                 {projects.map((p) => (
                   <tr key={p.id} className="clickable" onClick={() => navigate(`/projects/${p.id}`)}>
                     <td>
-                      <div style={{ fontWeight: 500 }}>{p.name}</div>
-                      {p.description && <div className="subtle" style={{ maxWidth: 520 }}>{p.description}</div>}
+                      <div className="app-cell">
+                        <span className={`app-ico tone-${p.id % 6}`} aria-hidden="true">{initials(p.name)}</span>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{p.name}</div>
+                          {p.description && <div className="subtle" style={{ maxWidth: 520 }}>{p.description}</div>}
+                        </div>
+                      </div>
                     </td>
                     <td style={{ minWidth: 200 }}><StatusCell p={p} /></td>
                     <td className="num">{fmtNumber(p.stats.programs_analysed)}</td>
@@ -123,6 +140,7 @@ export function ProjectsPage() {
       </div>
 
       {creating && <NewProjectModal onClose={() => setCreating(false)} onCreated={(id) => navigate(`/projects/${id}`)} />}
+      {importingRepo && <ImportRepoModal onClose={() => setImportingRepo(false)} onCreated={(id) => navigate(`/projects/${id}`)} />}
       {uploadingDocs && <UploadDocumentsModal onClose={() => setUploadingDocs(false)} />}
       {user && !welcomed && canWrite && <WelcomeModal onClose={() => updatePreferences({ welcome_seen: true }).catch(() => {})} onSample={async () => {
         await updatePreferences({ welcome_seen: true }).catch(() => {});
@@ -482,6 +500,7 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 }
 
+<<<<<<< HEAD
 type FinishStep = "store" | "analyze" | "docs" | "open";
 const FINISH_STEPS = ["Files uploaded", "Checking and storing the files", "Opening the project for analysis"];
 // Three visible steps. Queuing the analysis (instant) and uploading documents happen during the second one.
@@ -521,6 +540,136 @@ function FinishLoader({ step, seconds }: { step: FinishStep; seconds: number }) 
 /** A file's path inside a picked folder, or just its name. */
 const filePath = (f: File) => (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
 
+=======
+/** Create a project by cloning a public git repository URL. */
+function ImportRepoModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
+  const toast = useToast();
+  const [url, setUrl] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [branch, setBranch] = useState("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [defaultBranch, setDefaultBranch] = useState<string | null>(null);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Suggest a project name from the repository name until the user types their own.
+  const [nameTouched, setNameTouched] = useState(false);
+  const onUrlChange = (value: string) => {
+    setUrl(value);
+    setBranches([]);
+    setDefaultBranch(null);
+    if (!nameTouched) {
+      const repo = value.trim().replace(/\.git$/i, "").replace(/\/+$/, "").split("/").pop() || "";
+      setName(repo);
+    }
+  };
+
+  const loadBranches = async () => {
+    if (!url.trim()) return setError("Enter a repository URL first.");
+    setLoadingBranches(true);
+    setError(null);
+    try {
+      const r = await api.post<{ default: string | null; branches: string[] }>("/projects/repo-branches", { url: url.trim() });
+      setBranches(r.branches);
+      setDefaultBranch(r.default);
+      if (r.default) setBranch(r.default);
+      else if (r.branches.length) setBranch(r.branches[0]);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoadingBranches(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!url.trim()) return setError("Enter a repository URL.");
+    if (!name.trim()) return setError("Give the application a name.");
+    setBusy(true);
+    setError(null);
+    try {
+      const p = await api.post<Project & { imported_files: number; skipped_files: number }>("/projects/from-repo", {
+        name, description, url: url.trim(), branch: branch.trim() || null,
+      });
+      const n = p.imported_files ?? 0;
+      if (n <= 1) {
+        toast(`Only ${n} source file(s) were imported from this branch — the code is likely on a different branch. Set the branch above and try again.`, true);
+      } else {
+        toast(`Imported ${n} source file(s). Analysis is running.`);
+      }
+      onCreated(p.id);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Import from repository" onClose={onClose} width={620}
+      footer={<>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={submit} disabled={busy}>
+          {busy ? <span className="spinner" /> : <LuGitBranch size={15} />} Clone and analyse
+        </button>
+      </>}>
+      <div className="stack">
+        <p className="muted" style={{ marginTop: -4 }}>
+          Clone a public git repository over http(s). LegacyNexus keeps the analysable source files
+          (COBOL, JCL, SQL, Java, C#, Python, JavaScript/TypeScript and more) and runs the analysis.
+        </p>
+        <div className="field">
+          <label htmlFor="repo-url">Repository URL</label>
+          <div className="row" style={{ gap: 8 }}>
+            <input id="repo-url" className="input" style={{ flex: 1 }} value={url} onChange={(e) => onUrlChange(e.target.value)}
+              placeholder="https://github.com/owner/repo.git" autoFocus
+              onKeyDown={(e) => e.key === "Enter" && !busy && submit()} />
+            <button className="btn btn-sm" type="button" onClick={loadBranches} disabled={loadingBranches || !url.trim()}>
+              {loadingBranches ? <span className="spinner" /> : <LuGitBranch size={14} />} Load branches
+            </button>
+          </div>
+        </div>
+        <div className="row" style={{ gap: 12, alignItems: "flex-start" }}>
+          <div className="field" style={{ flex: 2 }}>
+            <label htmlFor="repo-name">Application name</label>
+            <input id="repo-name" className="input" value={name}
+              onChange={(e) => { setName(e.target.value); setNameTouched(true); }} placeholder="e.g. Retail Banking Core" />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label htmlFor="repo-branch">Branch / tag <span className="subtle" style={{ fontWeight: 400 }}>(optional)</span></label>
+            {branches.length > 0 ? (
+              <select id="repo-branch" className="input" value={branch} onChange={(e) => setBranch(e.target.value)}>
+                {branches.map((b) => (
+                  <option key={b} value={b}>{b}{b === defaultBranch ? " (default)" : ""}</option>
+                ))}
+              </select>
+            ) : (
+              <input id="repo-branch" className="input" value={branch}
+                onChange={(e) => setBranch(e.target.value)} placeholder="default branch" />
+            )}
+            <span className="hint" style={{ marginTop: 4 }}>
+              {branches.length > 0
+                ? "Pick the branch that holds the code — the default branch may be nearly empty."
+                : "Click “Load branches”, or type a branch (e.g. develop) if the code isn't on the default branch."}
+            </span>
+          </div>
+        </div>
+        <div className="field">
+          <label htmlFor="repo-desc">Description (optional)</label>
+          <input id="repo-desc" className="input" value={description}
+            onChange={(e) => setDescription(e.target.value)} placeholder="What this application does, who owns it" />
+        </div>
+        <p className="subtle" style={{ marginTop: -4 }}>
+          Only public repositories can be imported; a URL that needs credentials will be rejected.
+        </p>
+        {error && <div className="error-box">{error}</div>}
+      </div>
+    </Modal>
+  );
+}
+
+>>>>>>> 32ec541 (UI enhancement and repo loading via url)
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const docSummary = (r: DocUploadResult) => `${plural(r.uploaded.length, "document", "documents")} added to Document Q&A.`;
 const docFailures = (r: DocUploadResult) =>

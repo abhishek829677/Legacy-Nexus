@@ -175,16 +175,24 @@ export function CodeView({ lines, start = 1, highlightFrom, highlightTo, inline,
 
 /* ---------------- logo ---------------- */
 export function Logo({ size = 28 }: { size?: number }) {
+  const id = "lnx-logo";
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="7" fill="#183257" />
-      <g fill="#E9A23B">
-        <rect x="6" y="7" width="9" height="3" rx="1" />
-        <rect x="6" y="13" width="6" height="3" rx="1" />
-        <rect x="6" y="19" width="9" height="3" rx="1" />
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#22d3ee" />
+          <stop offset="0.5" stopColor="#0ea5c4" />
+          <stop offset="1" stopColor="#2563eb" />
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="8" fill={`url(#${id})`} />
+      <g fill="#ffffff" opacity="0.94">
+        <rect x="6" y="7" width="9" height="3" rx="1.5" />
+        <rect x="6" y="13" width="6" height="3" rx="1.5" />
+        <rect x="6" y="19" width="9" height="3" rx="1.5" />
       </g>
-      <path d="M15 8.5h4.5l3 7.5-3 7.5H15" stroke="#8FD3CC" strokeWidth="2" fill="none" />
-      <circle cx="23" cy="16" r="3" fill="#8FD3CC" />
+      <path d="M15 8.5h4.5l3 7.5-3 7.5H15" stroke="#bff3ea" strokeWidth="2" fill="none" />
+      <circle cx="23" cy="16" r="3" fill="#34d399" />
     </svg>
   );
 }

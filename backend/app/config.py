@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     max_files_per_request: int = Field(0, ge=0)  # files in one upload request (whole-folder uploads)
     max_source_file_mb: int = Field(0, ge=0)  # files larger than this are skipped
 
+    # Import source code straight from a git repository URL (public repos over http/https).
+    allow_repo_import: bool = True  # set false to hide the feature and reject the endpoint
+    repo_clone_timeout_seconds: int = Field(300, ge=1)  # kill a clone that runs longer than this
+
     # Accounts
     allow_signup: bool = True  # anyone can create an account (role: analyst); set false for invite-only
     signup_default_role: str = "analyst"

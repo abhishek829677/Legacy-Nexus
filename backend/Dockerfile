@@ -6,6 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# git is used to import a project directly from a repository URL (POST /projects/from-repo).
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system app && useradd --system --gid app --home /app app
 
 # INSTALL_AZURE=false builds a smaller image for air-gapped / on-premises installs.
