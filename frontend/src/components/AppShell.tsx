@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   LuBookOpen, LuChevronUp, LuCircleHelp, LuFileCode2, LuFileText, LuFolderKanban, LuGitFork, LuLayoutDashboard,
-  LuLogOut, LuMessageSquareText, LuPanelLeftClose, LuPanelLeftOpen, LuRadar, LuRocket, LuScale, LuSearch, LuSettings, LuUserRound, LuWorkflow,
+  LuLogOut, LuMessageSquareText, LuPanelLeftClose, LuPanelLeftOpen, LuRadar, LuRocket, LuScale, LuSettings, LuUserRound, LuWorkflow,
 } from "react-icons/lu";
-import { CommandPalette, isMac } from "./CommandPalette";
+// LuSearch and isMac are only needed by the topbar search button, which is hidden for now (see below).
+import { CommandPalette } from "./CommandPalette";
 import { accessFor, useAuth } from "../lib/auth";
 import { initials } from "../lib/format";
 import { Link, navigate, useLocation } from "../lib/router";
@@ -55,7 +56,7 @@ export function AppShell({ title, actions, children, wide }: { title?: ReactNode
     <div className={`shell ${closed ? "nav-closed" : ""} ${mobileOpen ? "nav-mobile-open" : ""}`}>
       {mobileOpen && <div className="nav-scrim" onClick={closeMobile} />}
       <aside className="sidebar">
-        <Link to="/projects" className="brand" style={{ textDecoration: "none" }}>
+        <Link to="/" className="brand" style={{ textDecoration: "none" }} title="Go to the home page">
           <Logo size={30} />
           <span>LegacyNexus<small>Application intelligence</small></span>
         </Link>
@@ -74,7 +75,7 @@ export function AppShell({ title, actions, children, wide }: { title?: ReactNode
           <>
             <div className="project-card" style={{ marginTop: 14 }}>
               <div className="name" title={project.name}>{project.name}</div>
-              <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+              <div style={{ fontSize: 12, color: "#d4ecf5", marginTop: 2 }}>
                 {project.status === "ready" ? `${project.stats.programs_analysed ?? 0} components · ready` : project.status}
               </div>
             </div>
@@ -98,12 +99,15 @@ export function AppShell({ title, actions, children, wide }: { title?: ReactNode
             ))}
           </>
         )}
+        {/* Hidden for now: the profile menu moved to the topbar (next to Guide), and Settings is
+            reachable from that menu. Uncomment to bring the sidebar footer back.
         <div className="foot">
           <Link to="/settings" className={`nav-item ${path === "/settings" ? "active" : ""}`} data-tour="nav-settings">
             <LuSettings size={17} /> Settings
           </Link>
           <UserMenu />
         </div>
+        */}
       </aside>
       <main className="main">
         <div className="mx-route-bar" key={path} aria-hidden="true" />
@@ -125,17 +129,21 @@ export function AppShell({ title, actions, children, wide }: { title?: ReactNode
             )}
           </nav>
           <div className="spacer" />
+          {/* Hidden for now: the quick-search button. Ctrl+K (⌘K on Mac) still opens the palette.
+              To restore, uncomment and re-add LuSearch and isMac to the imports above.
           <button type="button" className="cp-trigger" onClick={() => window.dispatchEvent(new Event("lnx:palette"))} aria-label="Quick search (Ctrl+K)" aria-keyshortcuts="Control+K Meta+K">
             <LuSearch size={15} aria-hidden="true" />
             <span className="cp-t-label">Search or jump to…</span>
             <kbd>{isMac() ? "⌘K" : "Ctrl K"}</kbd>
           </button>
+          */}
           {actions}
           {guideAvailable && (
             <button className="btn btn-sm btn-ghost" onClick={replay} data-tour="nav-guide" title="Show the guide for this page">
               <LuCircleHelp size={15} /> Guide
             </button>
           )}
+          <UserMenu compact />
         </header>
         <div className={`content ${wide ? "content-wide" : ""}`}>{children}</div>
       </main>
@@ -172,12 +180,18 @@ function useSidebar() {
   }, []);
 
   // Charts and graphs size themselves on window resize; nudge them when the main area changes width.
-  useEffect(() => { window.dispatchEvent(new Event("resize")); }, [closed]);
+  // The menu now slides (see motion.css), so nudge again once the slide has finished.
+  useEffect(() => {
+    window.dispatchEvent(new Event("resize"));
+    const t = window.setTimeout(() => window.dispatchEvent(new Event("resize")), 380);
+    return () => window.clearTimeout(t);
+  }, [closed]);
 
   return { closed, mobileOpen, toggle, closeMobile: () => setMobileOpen(false) };
 }
 
-function UserMenu() {
+/** Profile menu. `compact` (topbar) shows only the initials avatar; name, role and email move into the dropdown header. */
+function UserMenu({ compact = false }: { compact?: boolean }) {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -192,16 +206,33 @@ function UserMenu() {
     setOpen(false);
     navigate(to);
   };
+  const who = user.full_name ? `${user.full_name} · ${user.email}` : user.email;
   return (
-    <div className="user-menu" ref={ref}>
+    <div className={`user-menu ${compact ? "user-menu-compact" : ""}`} ref={ref}>
       {open && (
         <div className="menu-pop" role="menu">
+          {compact && (
+            <div className="menu-who">
+              <span className="avatar">{initials(user.full_name || user.email)}</span>
+              <span className="who">
+                <b>{user.full_name}</b><span className="role-badge">{ROLE_LABEL[user.role] ?? user.role}</span>
+                <small>{user.email}</small>
+              </span>
+            </div>
+          )}
+          {compact && <div className="divider" />}
           <button className="menu-item" role="menuitem" onClick={() => go("/settings?tab=account")}><LuUserRound size={16} /> My account</button>
           <button className="menu-item" role="menuitem" onClick={() => go("/settings")}><LuSettings size={16} /> Settings</button>
           <div className="divider" />
           <button className="menu-item" role="menuitem" onClick={logout}><LuLogOut size={16} /> Sign out</button>
         </div>
       )}
+      {compact ? (
+        <button className="user-chip clickable" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}
+          aria-label={`Account menu for ${user.full_name || user.email}`} title={who}>
+          <span className="avatar">{initials(user.full_name || user.email)}</span>
+        </button>
+      ) : (
       <button className="user-chip clickable" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
         <span className="avatar">{initials(user.full_name || user.email)}</span>
         <span className="who">
@@ -210,6 +241,7 @@ function UserMenu() {
         </span>
         <LuChevronUp size={15} style={{ marginLeft: "auto", color: "var(--ink-muted)", transform: open ? "none" : "rotate(180deg)" }} />
       </button>
+      )}
     </div>
   );
 }

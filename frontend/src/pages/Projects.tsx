@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LuCheck, LuDatabase, LuFileText, LuFolder, LuFolderOpen, LuGitBranch, LuMessageSquareText, LuPlay, LuPlus, LuRefreshCw, LuSparkles, LuTrash2, LuUpload, LuX } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
+import { confirmAction } from "../components/ConfirmDialog";
 import { usePageTour } from "../components/Tour";
 import { DASHBOARD_TOUR } from "../components/tours";
 import { EmptyState, Loading, Modal, useToast } from "../components/ui";
@@ -47,7 +48,13 @@ export function ProjectsPage() {
   };
 
   const remove = async (p: Project) => {
-    if (!confirm(`Delete “${p.name}” and all of its analysis results? This cannot be undone.`)) return;
+    if (!(await confirmAction({
+      title: "Delete application?",
+      subject: p.name,
+      subjectKind: "application",
+      message: "The application and all of its analysis results will be permanently removed. This cannot be undone.",
+      confirmLabel: "Delete application",
+    }))) return;
     try {
       await api.del(`/projects/${p.id}`);
       toast("Project deleted");

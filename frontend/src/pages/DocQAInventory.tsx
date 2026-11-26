@@ -212,8 +212,13 @@ export function UploadTray({ items, onCancel, onRetry, onDismiss, onClear }: {
             <div className="tray-actions">
               {(i.phase === "uploading" || i.phase === "queued") && <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => onCancel(i.key)} aria-label={`Cancel ${i.file.name}`} title="Cancel"><LuX size={15} /></button>}
               {(i.phase === "failed" || i.phase === "cancelled") && isDocFile(i.file.name) && <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => onRetry(i.key)} aria-label={`Retry ${i.file.name}`} title="Try again"><LuRotateCw size={15} /></button>}
+              {/* Hidden for now on "Ready" rows (they leave the tray on their own); kept for failed / cancelled rows.
               {(i.phase === "ready" || i.phase === "failed" || i.phase === "cancelled") && <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => onDismiss(i.key)} aria-label={`Dismiss ${i.file.name}`} title="Dismiss"><LuX size={15} /></button>}
+              */}
+              {(i.phase === "failed" || i.phase === "cancelled") && <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => onDismiss(i.key)} aria-label={`Dismiss ${i.file.name}`} title="Dismiss"><LuX size={15} /></button>}
+              {/* Hidden for now: the ✓ status mark on "Ready" rows (the word "Ready" is still shown).
               {i.phase === "ready" && <LuCheck size={16} className="tray-ok" aria-label="Ready" />}
+              */}
             </div>
           </div>
         );

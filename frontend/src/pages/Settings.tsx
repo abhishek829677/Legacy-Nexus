@@ -4,6 +4,7 @@ import {
   LuPower, LuRefreshCw, LuSave, LuScanSearch, LuServer, LuShield, LuSlidersHorizontal, LuTrash2, LuUserRound, LuUsers, LuZap,
 } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
+import { confirmAction } from "../components/ConfirmDialog";
 import { ComboInput } from "../components/ComboInput";
 import { JsonTooltip } from "../components/JsonTooltip";
 import { SemanticSettings } from "../components/SemanticSettings";
@@ -180,7 +181,13 @@ function ModelsTab({ isAdmin }: { isAdmin: boolean }) {
     const note = !m.is_active ? ""
       : others.length ? " It is the active model, so the next available model will take over automatically."
       : " It is the active model and no other model is ready, so questions will be answered with evidence only.";
-    if (!confirm(`Delete the saved model “${m.name}”?${note}`)) return;
+    if (!(await confirmAction({
+      title: "Delete saved model?",
+      subject: m.name,
+      subjectKind: "model",
+      message: note.trim() || "This saved model configuration will be removed.",
+      confirmLabel: "Delete model",
+    }))) return;
     try {
       await api.del(`/settings/models/${m.id}`);
       if (m.is_active) {

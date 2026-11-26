@@ -178,7 +178,9 @@ export function LandingPage() {
               Every program, table and business rule mapped from the code, with answers that cite the exact line.
             </p>
             <div className="lx-ctas lx-in" style={{ animationDelay: "240ms" }}>
+              {/* Hidden for now: hero call-to-action ("Open workspace" / "Get started"). The same link stays in the top nav.
               <Link to={cta.to} className="lx-btn lx-btn-primary lx-btn-lg">{user ? cta.label : "Get started"} <LuArrowRight size={16} aria-hidden="true" /></Link>
+              */}
               <a href="#product" className="lx-btn lx-btn-ghost lx-btn-lg">See what it does</a>
             </div>
           </div>

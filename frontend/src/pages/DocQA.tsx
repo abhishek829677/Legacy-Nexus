@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { LuBadgeCheck, LuBraces, LuCircleAlert, LuFileText, LuLoader, LuSend, LuTriangleAlert, LuUpload } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
+import { confirmAction } from "../components/ConfirmDialog";
 import { ConversationBar, FollowUpNote } from "../components/Conversation";
 import { Markdown } from "../components/Markdown";
 import { ConfidenceRing, useToast } from "../components/ui";
@@ -30,7 +31,14 @@ export function DocQAPage() {
   const [dragging, setDragging] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const uploads = useDocUploads(documents ?? null, (doc) => { setDocId(doc.id); reloadDocs(); });
+  // A just-uploaded document is selected straight away. Until the refreshed list (which includes it)
+  // arrives, the "pick the most recent document" rule below must not switch back to an older one.
+  const justUploaded = useRef<{ id: number; staleList: DocDocument[] | null | undefined } | null>(null);
+  const uploads = useDocUploads(documents ?? null, (doc) => {
+    justUploaded.current = { id: doc.id, staleList: documents };
+    setDocId(doc.id);
+    reloadDocs();
+  });
   const picker = useFilePicker(uploads.add);
 
   const currentDoc = useMemo(() => documents?.find((d) => d.id === docId) ?? null, [documents, docId]);
@@ -38,9 +46,27 @@ export function DocQAPage() {
 
   // Pick up the most recent document once the list loads (or after the current one is deleted).
   useEffect(() => {
+    const pending = justUploaded.current;
+    if (pending && pending.id === docId) {
+      if (documents === pending.staleList) return;  // still the old list: keep the new document selected
+      justUploaded.current = null;                    // refreshed list has arrived
+    }
     if ((docId === null || (documents && !documents.some((d) => d.id === docId))) && documents && documents.length > 0) setDocId(documents[0].id);
     if (documents && documents.length === 0 && docId !== null) setDocId(null);
   }, [documents, docId]);
+
+  // When an upload finishes being read and indexed, its row leaves the Uploads tray on its own a
+  // moment later (failed or cancelled rows stay until dismissed).
+  const announced = useRef(new Set<string>());
+  const dismissTimers = useRef<number[]>([]);
+  useEffect(() => {
+    for (const item of uploads.items) {
+      if (item.phase !== "ready" || announced.current.has(item.key)) continue;
+      announced.current.add(item.key);
+      dismissTimers.current.push(window.setTimeout(() => uploads.dismiss(item.key), 2500));
+    }
+  }, [uploads.items]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => dismissTimers.current.forEach((t) => window.clearTimeout(t)), []);
 
   // Keep the list fresh while any document is still being read and indexed.
   useEffect(() => {
@@ -99,7 +125,13 @@ export function DocQAPage() {
 
   const removeDoc = async (id: number) => {
     const name = documents?.find((d) => d.id === id)?.filename ?? "this document";
-    if (!confirm(`Delete “${name}” and its question history? This cannot be undone.`)) return;
+    if (!(await confirmAction({
+      title: "Delete document?",
+      subject: name,
+      subjectKind: "document",
+      message: "The document and its question history will be permanently removed. This cannot be undone.",
+      confirmLabel: "Delete document",
+    }))) return;
     try {
       await api.del(`/doc-qa/documents/${id}`);
       toast("Document deleted");
@@ -111,7 +143,11 @@ export function DocQAPage() {
   };
 
   const removeConversation = async (id: number) => {
-    if (docId === null || !confirm("Delete this conversation and its questions?")) return;
+    if (docId === null || !(await confirmAction({
+      title: "Delete this conversation?",
+      message: "The conversation and all of its questions and answers will be permanently removed.",
+      confirmLabel: "Delete conversation",
+    }))) return;
     try {
       await api.del(`/doc-qa/documents/${docId}/conversations/${id}`);
       toast("Conversation deleted");
@@ -137,20 +173,28 @@ export function DocQAPage() {
         {dragging > 0 && (
           <div className="drop-overlay" aria-hidden="true"><div><LuUpload size={26} /> Drop to upload<span className="subtle" style={{ fontWeight: 400 }}>{DOC_TYPES_LABEL}</span></div></div>
         )}
+        {/* Title, conversation and document controls: one panel pinned to the top while the chat scrolls. */}
+        <div className="docqa-head">
+        <div className="docqa-head-card">
+        {/* One row: title on the left; document picker and conversation controls on the right. */}
         <header className="row" style={{ gap: 10, flexWrap: "wrap" }}>
           <h1 style={{ margin: 0 }}>Document Q&amp;A</h1>
           <span className="tag tag-violet" title="Chosen when you signed in. Sign out to change it.">Answering as {roleLabel}</span>
           <div className="spacer" />
+          <div className="row docqa-head-docs" style={{ gap: 8 }}>
+            <DocumentInventory documents={documents ?? null} currentId={docId} onSelect={setDocId} onDelete={removeDoc} onUpload={picker.open} />
+            <button type="button" className="btn" onClick={picker.open}><LuUpload size={15} /> Upload</button>
+            {picker.element}
+            {/* Hidden for now to keep the header on one line (drag-and-drop still works; the empty state also mentions it).
+            <span className="subtle hide-sm" style={{ fontSize: 12.5 }}>or drop files anywhere on this page · large files upload in pieces and can be cancelled</span>
+            */}
+          </div>
           {currentDoc && ready && (
-            <ConversationBar conversations={conversations} currentId={convId} disabled={!!pending}
+            <ConversationBar variant="header" conversations={conversations} currentId={convId} disabled={!!pending}
               onSelect={setConvId} onNew={() => { setConvId(null); setError(null); }} onDelete={removeConversation} />
           )}
         </header>
-        <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-          <DocumentInventory documents={documents ?? null} currentId={docId} onSelect={setDocId} onDelete={removeDoc} onUpload={picker.open} />
-          <button type="button" className="btn" onClick={picker.open}><LuUpload size={15} /> Upload</button>
-          {picker.element}
-          <span className="subtle hide-sm" style={{ fontSize: 12.5 }}>or drop files anywhere on this page · large files upload in pieces and can be cancelled</span>
+        </div>
         </div>
 
         <div className="chat-thread">
@@ -212,7 +256,9 @@ export function DocQAPage() {
               <button className="btn btn-primary btn-icon" type="submit" disabled={!canSend} title="Send" aria-label="Send"><LuSend size={16} /></button>
             </div>
           </form>
+          {/* Hidden for now (more room for the chat). Enter / Shift+Enter work exactly the same.
           <div className="subtle" style={{ marginTop: 6, textAlign: "center", fontSize: 12 }}>Enter to send · Shift+Enter for a new line</div>
+          */}
         </div>
       </div>
     </AppShell>

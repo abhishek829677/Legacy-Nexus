@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LuBadgeCheck, LuBraces, LuCircleAlert, LuCircleCheck, LuSend, LuShieldCheck, LuTriangleAlert } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
+import { confirmAction } from "../components/ConfirmDialog";
 import { useProject } from "../components/ProjectContext";
 import { usePageTour } from "../components/Tour";
 import { ASK_TOUR } from "../components/tours";
@@ -71,7 +72,11 @@ export function AskPage() {
   };
 
   const removeConversation = async (id: number) => {
-    if (!confirm("Delete this conversation and its questions?")) return;
+    if (!(await confirmAction({
+      title: "Delete this conversation?",
+      message: "The conversation and all of its questions and answers will be permanently removed.",
+      confirmLabel: "Delete conversation",
+    }))) return;
     try {
       await api.del(`/projects/${pid}/conversations/${id}`);
       toast("Conversation deleted");
@@ -86,8 +91,10 @@ export function AskPage() {
     <AppShell title="Ask the code">
       <div className="ask-layout">
         <div className="thread" style={{ minHeight: "calc(100vh - 180px)" }}>
-          <ConversationBar conversations={conversations} currentId={convId} disabled={!!pending}
+          <ConversationBar variant="header" conversations={conversations} currentId={convId} disabled={!!pending}
             onSelect={setConvId} onNew={() => { setConvId(null); setError(null); }} onDelete={removeConversation} />
+          {/* Messages only: on wide screens this is the part that scrolls, between the header and the composer. */}
+          <div className="thread-scroll">
           {thread.length === 0 && !pending && (
             <div className="card card-pad" style={{ textAlign: "center", padding: "48px 24px" }}>
               <h2>Ask anything about {project!.name}</h2>
@@ -113,6 +120,7 @@ export function AskPage() {
           )}
           {error && <ErrorBox message={error} />}
           <div ref={bottom} />
+          </div>
           <div className="ask-box">
             <form className="ask-input" data-tour="ask-input" onSubmit={(e) => { e.preventDefault(); ask(question); }}>
               <textarea
@@ -132,7 +140,9 @@ export function AskPage() {
                 <LuSend size={15} /> Ask
               </button>
             </form>
+            {/* Hidden for now (more room for the chat). Enter / Shift+Enter work exactly the same.
             <div className="subtle" style={{ padding: "6px 4px" }}>Enter to send · Shift+Enter for a new line</div>
+            */}
           </div>
         </div>
 

@@ -1539,7 +1539,9 @@ body { background: #e9eefb; }   /* fallback behind the shell */
   -webkit-mask-image: radial-gradient(70% 120% at 80% 0%, #000 0%, transparent 70%);
           mask-image: radial-gradient(70% 120% at 80% 0%, #000 0%, transparent 70%);
 }
-.app-hero-copy { position: relative; z-index: 1; min-width: 0; }
+/* Decorative layer only — taken out of the flex flow so it doesn't push the copy to the centre. */
+.app-hero-glow { position: absolute; inset: 0; pointer-events: none; }
+.app-hero-copy { position: relative; z-index: 1; min-width: 0; margin-right: auto; text-align: left; }
 .app-hero-eyebrow {
   font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   color: rgba(255, 255, 255, 0.72);
@@ -1617,7 +1619,7 @@ table.data td { vertical-align: middle; }
 .sidebar .nav-item { color: #d4ecf5; }
 .sidebar .nav-item.active {
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0.08) 100%);
-  box-shadow: inset 3px 0 0 #ffffff, inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  box-shadow: inset -3px 0 0 #ffffff, inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 
 /* Applications hero: a fresh ocean band. */

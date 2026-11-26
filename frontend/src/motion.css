@@ -56,6 +56,9 @@ table.data tbody tr { transition: background 0.12s; }
   transition: opacity 0.3s;
 }
 .mx-spot:hover::after { opacity: 1; }
+/* Dashboard KPI cards also give ::after a fixed 150×150 size (for a corner glow in styles.css); on a
+   spotlight card that size clipped the glow to a box in the top-left (~3/4 of the card). Fill the card. */
+.kpi.mx-spot::after { width: auto; height: auto; }
 
 /* ---------- Hover.css-style effects ---------- */
 /* float: lift with a soft shadow */
@@ -142,3 +145,251 @@ table.data tbody tr { transition: background 0.12s; }
 .mx-slider-dark .mx-dot-fill, .mx-slider-dark .mx-dot.on:not(:has(.mx-dot-fill)) { background: #fff; }
 .mx-slider-dark .mx-icon-btn { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); color: rgba(255, 255, 255, 0.8); }
 .mx-slider-dark .mx-icon-btn:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+
+/* ---------- Main menu hide/show (topbar toggle, Ctrl+B) ----------
+   Wide screens: instead of snapping out with display:none, the sidebar column
+   collapses to 0 while the rail slides left in step with it, so the content
+   glides into the freed space. Same timing on both, so the rail's right edge
+   always sits exactly on the column edge (no overlap, no gap). */
+:root { --mx-nav-dur: 0.34s; --mx-nav-ease: cubic-bezier(0.32, 0.72, 0, 1); }
+@media (min-width: 901px) {
+  .shell { transition: grid-template-columns var(--mx-nav-dur) var(--mx-nav-ease); }
+  .shell > .sidebar {
+    width: var(--sidebar-w); min-width: 0;
+    transition: transform var(--mx-nav-dur) var(--mx-nav-ease), opacity 0.22s ease, visibility 0s linear 0s;
+  }
+  .shell.nav-closed { grid-template-columns: 0px 1fr; }
+  .shell.nav-closed > .sidebar {
+    display: flex; transform: translateX(-100%); opacity: 0.6; visibility: hidden; pointer-events: none;
+    /* hide from focus / screen readers only once the slide has finished */
+    transition: transform var(--mx-nav-dur) var(--mx-nav-ease), opacity var(--mx-nav-dur) ease, visibility 0s linear var(--mx-nav-dur);
+  }
+}
+
+/* Phones: the overlay menu slides in from the left over a fading scrim. */
+@keyframes mx-nav-slide-in { from { transform: translateX(-100%); } to { transform: none; } }
+@media (max-width: 900px) {
+  .shell.nav-mobile-open > .sidebar { animation: mx-nav-slide-in var(--mx-nav-dur) var(--mx-nav-ease) both; }
+  .shell.nav-mobile-open > .nav-scrim { animation: mx-fade 0.25s ease both; }
+}
+
+/* The toggle's open/close icon swaps with a small turn-and-fade instead of a hard cut. */
+@keyframes mx-nav-icon-in { from { opacity: 0; transform: rotate(-90deg) scale(0.7); } to { opacity: 1; transform: none; } }
+.nav-toggle svg { animation: mx-nav-icon-in 0.3s var(--ease-out) both; }
+.nav-toggle:hover:not(:disabled) svg { color: var(--brand); }
+
+/* ---------- Document Q&A: header panel pinned to the top ----------
+   Title, conversation picker and document picker sit in their own card that stays
+   at the top while the thread scrolls underneath (mirrors the pinned composer at
+   the bottom). The page's own top padding moves into the band so the card sits
+   flush to the topbar with no scrolled text peeking out above it. */
+/* The page drops its side/top padding so the header band can run edge to edge;
+   the thread and composer keep their original 860px centred column via --dq-col. */
+/* overflow: hidden — same anti-shake fix as Ask the code: the chat panel scrolls on its own, so the
+   page never needs a scrollbar that could flicker in and out on hover (sub-pixel rounding at zoom). */
+.content:has(> .docqa.chat) { padding: 0; overflow: hidden; }
+/* The page itself no longer scrolls: it is exactly the height under the topbar.
+   Header on top, then one chat panel that fills the rest. */
+.docqa.chat {
+  max-width: none; gap: 0; --dq-col: min(860px, calc(100% - 56px));
+  height: calc(100vh - 60px); min-height: 0;
+}
+.docqa-head { margin-bottom: 14px; }
+
+/* Chat panel = thread (top) + composer (bottom), drawn as ONE box: same background,
+   border and shadow, with no seam between them. Only the messages scroll, inside the
+   panel; the panel and the composer stay put. 20px wider than the column so the
+   messages keep their 860px width. */
+.docqa.chat > .chat-thread,
+.docqa.chat > .ask-box {
+  width: calc(100% - 16px); max-width: 900px; margin-left: auto; margin-right: auto;
+  /* grows / shrinks in step with the side menu sliding (same duration and curve) */
+  transition: max-width var(--mx-nav-dur, 0.34s) var(--mx-nav-ease, ease);
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(12, 156, 192, 0.12);
+  box-shadow: 0 0 26px rgba(6, 90, 130, 0.16);
+}
+.docqa.chat > .chat-thread {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 18px 20px 10px;
+  border-bottom: 0; border-radius: 18px 18px 0 0;
+  clip-path: inset(-40px -40px 0 -40px); /* hide the shadow on the seam side */
+}
+.docqa.chat > .chat-thread > * { flex-shrink: 0; }
+/* Side menu closed: the chat panel (messages + composer) widens into the freed space. */
+.shell.nav-closed .docqa.chat > .chat-thread,
+.shell.nav-closed .docqa.chat > .ask-box { max-width: 1240px; } /* messages keep their size; the panel scrolls */
+.docqa.chat > .ask-box {
+  position: relative; margin-top: 0; margin-bottom: 10px;
+  padding: 6px 20px 14px;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  border-top: 0; border-radius: 0 0 18px 18px;
+  clip-path: inset(0 -40px -40px -40px);
+}
+
+/* Full-width band in the page's own (frosted) background, like the topbar — no white box. */
+.docqa-head {
+  position: sticky; top: 0; z-index: 3;
+  padding: 10px 0;
+  background: rgba(231, 245, 251, 0.82);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+          backdrop-filter: saturate(160%) blur(12px);
+  border-bottom: 1px solid rgba(12, 156, 192, 0.14);
+  box-shadow: 0 10px 20px -18px rgba(6, 90, 130, 0.45);
+}
+/* Contents start at the left edge of the band (not centred on the chat column). */
+.docqa-head-card {
+  width: auto; margin: 0; padding: 0 28px;
+  display: flex; flex-direction: column; gap: 8px;
+  animation: mx-fade-up 0.4s var(--ease-out) both;
+}
+.docqa-head-card h1 { font-size: 18px; line-height: 1.25; }
+.docqa-head-card .tag { font-size: 11.5px; }
+/* Conversation picker: size to its text so it sits on one line with its buttons. */
+.docqa-head-card .select { width: auto; min-width: 180px; height: 32px; }
+
+/* Document picker: undo the unrelated dashboard ".inv" tile styling (border, padding,
+   hover lift, small grey text) that was boxing it in. */
+.docqa-head .inv { display: block; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.docqa-head .inv:hover { transform: none; box-shadow: none; }
+.docqa-head .inv-trigger { height: 34px; }
+.docqa-head .inv-trigger .inv-current { font-size: 14px; color: var(--text); }
+.docqa-head .inv-trigger .inv-count { font-size: 11.5px; color: var(--text-3); }
+/* Picker now sits on the right, so its dropdown opens right-aligned (stays on screen). */
+.docqa-head .inv-pop { left: auto; right: 0; }
+.docqa-head .inv-trigger { max-width: min(360px, 40vw); }
+
+/* Conversation header in the Document Q&A title row: a divider, then chat name + icons. */
+.docqa-head .conv-head { min-height: 34px; padding-left: 10px; margin-left: 2px; border-left: 1px solid rgba(12, 156, 192, 0.18); }
+.docqa-head .conv-head > .spacer { display: none; }
+.docqa-head .conv-head-name { max-width: 200px; font-size: 14px; }
+.docqa-head .conv-head-title { margin-right: 4px; }
+/* Hidden for now on Document Q&A only: the "N questions" badge next to the chat name.
+   Delete this line to bring it back. (Ask the code still shows it.) */
+.docqa-head .conv-head-turns { display: none; }
+
+@media (max-width: 900px) {
+  .docqa.chat { --dq-col: calc(100% - 32px); }
+  .docqa-head { padding: 8px 0; }
+  .docqa-head-card { padding: 0 16px; }
+  .docqa.chat > .chat-thread { width: calc(100% - 16px); padding: 12px 8px 8px; }
+  .docqa.chat > .ask-box { width: calc(100% - 16px); padding: 6px 8px 8px; margin-bottom: 8px; }
+}
+
+/* Messages wrapper in Ask the code: lays the messages out exactly as the thread did. */
+.thread-scroll { display: flex; flex-direction: column; gap: 18px; }
+
+/* ---------- Ask the code: two fixed panels, each with its own scrollbar ----------
+   Same idea as Document Q&A. Left: the chat panel — the conversation picker stays at the
+   top, the composer stays at the bottom (joined to the panel, same background), and only
+   the messages scroll between them. Right: the "Try asking / How answers are checked /
+   AI model" column is its own box with its own scrollbar. The page itself doesn't scroll.
+   Wide screens only; below 1150px the original single-column layout is unchanged. */
+@media (min-width: 1151px) {
+  /* overflow: hidden — the panels scroll on their own, so the page never needs to. Without it, a
+     sub-pixel rounding (browser zoom) could make the page 1px too tall on some repaints (e.g. hovering
+     the history / new-chat icons): its scrollbar flickered in and out and the panels shook sideways. */
+  .content:has(> .ask-layout) { padding-top: 12px; padding-bottom: 12px; overflow: hidden; }
+  .ask-layout {
+    height: calc(100vh - 60px - 24px);   /* screen minus topbar minus the page padding above */
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  /* Both panels share one look. */
+  .ask-layout > .thread,
+  .ask-layout > aside {
+    min-height: 0 !important; overflow-y: auto; overscroll-behavior: contain;
+    background: #f4fafc;
+    border: 1px solid rgba(12, 156, 192, 0.12); border-radius: 18px;
+    box-shadow: 0 0 26px rgba(6, 90, 130, 0.16);
+  }
+
+  /* Left: chat panel = header / messages / composer stacked. The panel itself does NOT scroll;
+     only the messages area between the header and the composer does, so nothing ever slides
+     underneath either bar and the scrollbar runs beside the messages only. */
+  .ask-layout > .thread { padding: 0; gap: 0; overflow: hidden; }
+  .ask-layout > .thread > .row:first-child {     /* conversation header */
+    flex: none; padding: 10px 18px; background: #f4fafc;
+    border-bottom: 1px solid rgba(12, 156, 192, 0.12);
+  }
+  .ask-layout > .thread > .thread-scroll {       /* messages: the only scrolling part */
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    padding: 16px 18px;
+  }
+  .ask-layout > .thread > .thread-scroll > * { flex-shrink: 0; } /* messages keep their size */
+  .ask-layout > .thread > .ask-box {             /* composer */
+    flex: none; position: relative; z-index: 2; margin-top: 0;
+    padding: 10px 18px 12px; background: #f4fafc;
+    border-top: 1px solid rgba(12, 156, 192, 0.12);
+  }
+
+  /* Right: side column as its own box. */
+  .ask-layout > aside { padding: 14px; }
+}
+
+/* ---------- Conversation header (Ask the code): chat name + history / new-chat icons ---------- */
+.conv-head { position: relative; gap: 4px; min-height: 40px; flex-wrap: nowrap; }
+.conv-head-title { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text); }
+.conv-head-title > svg { flex: none; color: var(--brand); }
+.conv-head-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
+.conv-head-turns {
+  flex: none; font-size: 11.5px; font-weight: 600; color: var(--text-3);
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; line-height: 20px;
+}
+.conv-head-btn {
+  flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px;
+  border: 1px solid transparent; background: none; color: var(--text-2); cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.12s var(--ease-out);
+}
+.conv-head-btn:hover:not(:disabled), .conv-head-btn.on { background: var(--brand-soft); color: var(--brand-ink); border-color: rgba(12, 156, 192, 0.18); }
+.conv-head-btn:active:not(:disabled) { transform: scale(0.94); }
+.conv-head-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.conv-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: min(340px, calc(100vw - 32px));
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-3);
+  display: flex; flex-direction: column; max-height: min(380px, 55vh); overflow: hidden;
+  transform-origin: top right; animation: mx-menu-in 0.2s var(--ease-out) both;
+}
+.conv-pop-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; font-size: 13px; font-weight: 600; color: var(--text); }
+.conv-pop-count { font-size: 11.5px; font-weight: 600; color: var(--text-3); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; line-height: 18px; }
+.conv-pop-empty { padding: 14px; color: var(--text-3); font-size: 13.5px; }
+.conv-pop-list { list-style: none; margin: 0; padding: 2px 6px 6px; overflow-y: auto; }
+.conv-pop-row { display: flex; align-items: center; gap: 2px; border-radius: 9px; transition: background 0.12s; }
+.conv-pop-row:hover, .conv-pop-row:focus-within { background: var(--surface-2); }
+.conv-pop-row.on { background: var(--brand-soft); }
+.conv-pop-item {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border: 0; background: none; text-align: left; cursor: pointer; color: var(--text); font-size: 13.5px;
+}
+.conv-pop-row.on .conv-pop-item { color: var(--brand-ink); font-weight: 600; }
+.conv-pop-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-pop-meta { flex: none; font-size: 11.5px; color: var(--text-3); }
+.conv-pop-del {
+  flex: none; width: 30px; height: 30px; margin-right: 4px; display: grid; place-items: center; border-radius: 8px;
+  border: 0; background: none; color: var(--text-3); cursor: pointer; opacity: 0; transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.conv-pop-row:hover .conv-pop-del, .conv-pop-row:focus-within .conv-pop-del { opacity: 1; }
+.conv-pop-del:hover { background: #fde8e8; color: var(--red, #d92d20); }
+@media (hover: none) { .conv-pop-del { opacity: 1; } } /* touch screens: always show delete */
+
+/* ---------- Profile menu in the topbar (avatar only, right of Guide) ---------- */
+.user-menu-compact { flex: none; }
+.user-menu-compact > .user-chip.clickable {
+  width: auto; padding: 3px; border-radius: 999px; background: none;
+  transition: box-shadow 0.2s var(--ease-out), transform 0.12s var(--ease-out);
+}
+.user-menu-compact > .user-chip.clickable:hover { background: none; box-shadow: 0 0 0 3px var(--brand-soft); }
+.user-menu-compact > .user-chip.clickable:active { transform: scale(0.95); }
+.user-menu-compact > .user-chip.clickable[aria-expanded="true"] { box-shadow: 0 0 0 3px rgba(12, 156, 192, 0.28); }
+.user-menu-compact > .user-chip .avatar { width: 32px; height: 32px; font-size: 12.5px; }
+/* Drops down and right-aligned (the sidebar version opened upwards). */
+.user-menu-compact > .menu-pop {
+  top: calc(100% + 8px); bottom: auto; left: auto; right: 0; width: 260px;
+  transform-origin: top right; animation: mx-menu-in 0.2s var(--ease-out) both;
+}
+@keyframes mx-menu-in { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }
+.menu-who { display: flex; align-items: center; gap: 10px; padding: 8px 10px 6px; }
+.menu-who .who { min-width: 0; font-size: 13px; line-height: 1.3; color: var(--text); }
+.menu-who .who b { font-weight: 600; }
+.menu-who .who small { display: block; color: var(--text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

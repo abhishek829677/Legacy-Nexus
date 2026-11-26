@@ -1,0 +1,123 @@
+/* App-styled confirmation dialog (replaces the browser's confirm box). Prefix "cf-".
+   Every rule is scoped under .cf-backdrop / .cf-card: this file is loaded before styles.css, whose
+   generic `.btn:hover` (white background) would otherwise win and hide the white button text. */
+
+@keyframes cf-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cf-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes cf-card-in { from { opacity: 0; transform: translateY(12px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes cf-card-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(6px) scale(0.97); } }
+@keyframes cf-ring { 0% { box-shadow: 0 0 0 0 var(--cf-ring); } 100% { box-shadow: 0 0 0 14px rgba(0, 0, 0, 0); } }
+@keyframes cf-wiggle { 0%, 100% { transform: none; } 30% { transform: rotate(-9deg); } 60% { transform: rotate(6deg); } }
+
+.cf-backdrop {
+  position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; padding: 20px;
+  background: radial-gradient(120% 90% at 50% 40%, rgba(8, 40, 60, 0.38), rgba(6, 22, 38, 0.55));
+  -webkit-backdrop-filter: blur(5px) saturate(120%);
+          backdrop-filter: blur(5px) saturate(120%);
+  animation: cf-fade-in 0.18s ease-out both;
+}
+.cf-backdrop.is-out { animation: cf-fade-out 0.16s ease-in both; pointer-events: none; }
+
+.cf-backdrop .cf-card {
+  --cf-accent: #0c9cc0;
+  --cf-accent-2: #2563eb;
+  --cf-accent-soft: #e2f5fb;
+  --cf-ring: rgba(12, 156, 192, 0.35);
+  position: relative; width: min(460px, 100%); overflow: hidden;
+  background: #ffffff; color: #101828;
+  border: 1px solid rgba(12, 156, 192, 0.14); border-radius: 20px;
+  box-shadow: 0 30px 70px -24px rgba(8, 40, 64, 0.55), 0 2px 8px rgba(16, 24, 40, 0.06);
+  animation: cf-card-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.cf-backdrop.is-out .cf-card { animation: cf-card-out 0.16s ease-in both; }
+.cf-backdrop .cf-card.cf-danger {
+  --cf-accent: #e5484d;
+  --cf-accent-2: #b4233a;
+  --cf-accent-soft: #fdecee;
+  --cf-ring: rgba(229, 72, 77, 0.32);
+}
+/* accent line along the top edge + a faint tinted glow behind the icon */
+.cf-backdrop .cf-card::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px;
+  background: linear-gradient(90deg, var(--cf-accent), var(--cf-accent-2));
+}
+.cf-backdrop .cf-card::after {
+  content: ""; position: absolute; left: -60px; top: -80px; width: 240px; height: 200px; pointer-events: none;
+  background: radial-gradient(closest-side, var(--cf-accent-soft), transparent);
+  opacity: 0.9;
+}
+
+.cf-backdrop .cf-body { position: relative; z-index: 1; display: flex; gap: 16px; padding: 26px 26px 20px; align-items: flex-start; }
+.cf-backdrop .cf-icon {
+  flex: none; width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center;
+  background: linear-gradient(160deg, #ffffff, var(--cf-accent-soft)); color: var(--cf-accent);
+  border: 1px solid color-mix(in srgb, var(--cf-accent) 22%, transparent);
+  animation: cf-ring 0.9s 0.15s ease-out 1;
+}
+.cf-backdrop .cf-icon svg { animation: cf-wiggle 0.6s 0.25s ease-out 1; }
+.cf-backdrop .cf-text { flex: 1; min-width: 0; padding-top: 1px; }
+.cf-backdrop .cf-title {
+  margin: 0; font-size: 18px; font-weight: 700; line-height: 1.35; letter-spacing: -0.015em; color: #101828;
+  overflow-wrap: break-word; word-break: normal; hyphens: none;
+}
+/* the item being acted on: one tidy line, trimmed with … (full name on hover) */
+.cf-backdrop .cf-subject {
+  display: flex; align-items: center; gap: 8px; max-width: 100%; margin-top: 10px; padding: 8px 12px;
+  border-radius: 11px; background: #f6f9fc; border: 1px solid #e3eaf2; color: #344054;
+}
+.cf-backdrop .cf-danger .cf-subject { background: #fff7f7; border-color: #f6d5d8; }
+.cf-backdrop .cf-subject svg { flex: none; color: var(--cf-accent); }
+.cf-backdrop .cf-subject-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13.5px; font-weight: 600;
+}
+.cf-backdrop .cf-msg {
+  margin-top: 10px; font-size: 14px; line-height: 1.6; color: #475467;
+  overflow-wrap: break-word; word-break: normal; hyphens: none;
+}
+
+.cf-backdrop .cf-foot {
+  position: relative; z-index: 1; display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px 16px;
+  background: linear-gradient(180deg, #f8fbfd, #f2f7fa); border-top: 1px solid #e6edf3;
+}
+.cf-backdrop .cf-foot .btn {
+  min-width: 104px; height: 40px; justify-content: center; gap: 7px; border-radius: 11px;
+  font-weight: 600; font-size: 14px; white-space: nowrap;
+  transition: background 0.18s, border-color 0.18s, color 0.18s, box-shadow 0.2s, transform 0.12s;
+}
+.cf-backdrop .cf-foot .btn:active:not(:disabled) { transform: translateY(1px) scale(0.985); }
+
+/* Cancel: quiet white button */
+.cf-backdrop .cf-foot .btn.cf-cancel { background: #ffffff; color: #344054; border: 1px solid #d0d8e2; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05); }
+.cf-backdrop .cf-foot .btn.cf-cancel:hover:not(:disabled) { background: #f4f7fa; color: #101828; border-color: #b8c3d1; }
+
+/* Confirm (danger): red gradient — text stays white on hover */
+.cf-backdrop .cf-foot .btn.cf-ok-danger {
+  color: #ffffff; border: 1px solid #c62f3b;
+  background: linear-gradient(180deg, #ef5a62 0%, #d73241 100%);
+  box-shadow: 0 10px 20px -10px rgba(215, 50, 65, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.cf-backdrop .cf-foot .btn.cf-ok-danger:hover:not(:disabled) {
+  color: #ffffff; border-color: #a61e2d;
+  background: linear-gradient(180deg, #e04450 0%, #b8202f 100%);
+  box-shadow: 0 14px 26px -12px rgba(184, 32, 47, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.cf-backdrop .cf-foot .btn.cf-ok-danger:focus-visible { box-shadow: 0 0 0 4px rgba(229, 72, 77, 0.28); }
+
+/* Confirm (default): brand gradient */
+.cf-backdrop .cf-foot .btn.cf-ok-default {
+  color: #ffffff; border: 1px solid #0a8fb3;
+  background: linear-gradient(180deg, #19b6da 0%, #0a8fb3 100%);
+  box-shadow: 0 10px 20px -10px rgba(10, 143, 179, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.cf-backdrop .cf-foot .btn.cf-ok-default:hover:not(:disabled) {
+  color: #ffffff; border-color: #077a99;
+  background: linear-gradient(180deg, #11a6c9 0%, #077a99 100%);
+}
+
+@media (max-width: 480px) {
+  .cf-backdrop .cf-body { padding: 22px 18px 16px; gap: 12px; }
+  .cf-backdrop .cf-icon { width: 42px; height: 42px; border-radius: 13px; }
+  .cf-backdrop .cf-foot { padding: 12px 16px; }
+  .cf-backdrop .cf-foot .btn { flex: 1; min-width: 0; }
+}
