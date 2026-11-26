@@ -102,6 +102,7 @@ def save_model(db: Session, data: dict, user_id: int, model: AIModel | None = No
     if provider not in PROVIDER_CATALOG:
         raise ValueError(f"Unknown provider {provider}")
     m = model or AIModel(created_by=user_id, provider=provider)
+    before = tuple(getattr(m, f) for f in MODEL_FIELDS) + (m.encrypted_api_key,) if model else None
     for f in MODEL_FIELDS:
         if f in data and data[f] is not None:
             setattr(m, f, data[f].strip())
@@ -116,6 +117,14 @@ def save_model(db: Session, data: dict, user_id: int, model: AIModel | None = No
     for flag in ("is_small", "is_fallback"):
         if data.get(flag) is not None:
             setattr(m, flag, bool(data[flag]))
+    missing = missing_fields(_llm_config_for(m))
+    if missing:
+        if model is not None:
+            db.rollback()  # undo the edits made to the saved model above
+        raise ValueError(f"Enter the {_join(missing)} to save this model.")
+    if before is not None and before != tuple(getattr(m, f) for f in MODEL_FIELDS) + (m.encrypted_api_key,):
+        m.last_test_ok = None
+        m.last_tested_at = None
     if model is None:
         db.add(m)
     db.flush()
@@ -123,6 +132,26 @@ def save_model(db: Session, data: dict, user_id: int, model: AIModel | None = No
         activate_model(db, m, user_id)  # the first model saved becomes the active one
     db.commit()
     return m
+
+
+# What each provider needs before a model can be saved; the same rule as LLMConfig.configured.
+REQUIRED_FIELDS = {
+    "azure_openai": ("api_key", "base_url", "deployment"),
+    "ollama": ("model",),  # local: no key
+    "openai_compatible": ("model", "base_url"),  # the key is optional for self-hosted endpoints
+}
+_FIELD_LABELS = {"api_key": "API key", "model": "model name", "base_url": "base URL", "deployment": "deployment name"}
+
+
+def missing_fields(cfg: LLMConfig) -> list[str]:
+    """Readable names of the required fields that are empty, e.g. ["API key", "model name"]."""
+    required = REQUIRED_FIELDS.get(cfg.provider, ("api_key", "model"))
+    labels = {**_FIELD_LABELS, "base_url": "endpoint" if cfg.provider == "azure_openai" else "base URL"}
+    return [labels[f] for f in required if not (getattr(cfg, f) or "").strip()]
+
+
+def _join(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
 
 
 def activate_model(db: Session, m: AIModel, user_id: int) -> None:
@@ -136,16 +165,32 @@ def activate_model(db: Session, m: AIModel, user_id: int) -> None:
     db.commit()
 
 
-def delete_model(db: Session, m: AIModel, user_id: int) -> None:
+def delete_model(db: Session, m: AIModel, user_id: int) -> AIModel | None:
+    """Delete a saved model. If it was the active one, the next usable model takes over (see next_active);
+    with none left, Q&A falls back to evidence-only answers. Returns the model that took over, if any."""
     was_active = m.is_active
     db.delete(m)
     db.flush()
-    if was_active:  # no model is active any more: Q&A falls back to evidence-only answers
+    successor = next_active(db) if was_active else None
+    if successor is not None:
+        activate_model(db, successor, user_id)  # commits
+        return successor
+    if was_active:
         row = get_row(db)
         row.provider, row.model, row.base_url, row.api_version, row.deployment = "none", "", "", "", ""
         row.encrypted_api_key = ""
         row.updated_by = user_id
     db.commit()
+    return None
+
+
+def next_active(db: Session) -> AIModel | None:
+    """The model to switch to when the active one goes away: only fully configured ones; a model marked as
+    fallback first (that is what it is for), then full-size before "small" models, then the most recently updated."""
+    usable = [x for x in list_models(db) if _llm_config_for(x).configured]
+    if not usable:
+        return None
+    return sorted(usable, key=lambda x: (not x.is_fallback, bool(x.is_small), -(x.updated_at or x.created_at).timestamp()))[0]
 
 
 def deactivate_all(db: Session, user_id: int) -> None:

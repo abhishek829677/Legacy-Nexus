@@ -35,10 +35,23 @@ export function fmtNumber(n: number | undefined | null) {
   return n === undefined || n === null ? "—" : new Intl.NumberFormat().format(n);
 }
 
+/**
+ * Parses an API timestamp. The server stores UTC, but SQLite drops the offset, so values can arrive as
+ * "2026-11-13T06:37:25" with no zone; the browser would read those as local time. Treat them as UTC.
+ */
+export function parseApiDate(iso: string): Date {
+  const hasZone = /(Z|[+-]\d{2}:?\d{2})$/i.test(iso.trim());
+  return new Date(hasZone ? iso : `${iso.trim()}Z`);
+}
+
+/** A timestamp in the viewer's own time zone, with the zone shown (e.g. "13 Nov 2026, 12:07 pm IST"). */
 export function fmtDate(iso: string | null | undefined) {
   if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const d = parseApiDate(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const dateTime = d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const zone = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(d).find((p) => p.type === "timeZoneName")?.value;
+  return zone ? `${dateTime} ${zone}` : dateTime;
 }
 
 export function initials(name: string) {

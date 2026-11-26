@@ -454,6 +454,12 @@ export const PAGE = {
     } as Topic,
   },
 
+  /* ---------- cost & effort estimate (inside step 4) ---------- */
+  cost: {
+    heading: "Estimated effort and cost",
+    caption: "A planning estimate built from the programs, strategies and risks above. Edit the assumptions to fit your team.",
+  },
+
   /* ---------- step 5: verify ---------- */
   parity: {
     heading: "Behavioural parity pack",

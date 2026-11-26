@@ -5,7 +5,7 @@ process (JOB_BACKEND=inline) or in a queue worker (JOB_BACKEND=servicebus, see a
 """
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete
 
@@ -26,6 +26,29 @@ _lock = threading.Lock()
 def is_running(project_id: int) -> bool:
     with _lock:
         return project_id in _running
+
+
+# An analysis that has not reported progress for this long is treated as lost (worker never started, crashed,
+# or its queue message expired), so the project does not stay "analysing" forever and can be run again.
+# A worker normally starts within a minute; a running analysis saves progress at every stage.
+QUEUED_TIMEOUT = timedelta(minutes=15)
+RUNNING_TIMEOUT = timedelta(hours=6)  # the worker's own time limit (replicaTimeout in infra/azure/main.bicep)
+
+
+def expire_if_stale(db, project: Project) -> bool:
+    """Mark a lost analysis as failed. Returns True when it did."""
+    if project.status != "analyzing" or is_running(project.id) or project.updated_at is None:
+        return False
+    updated = project.updated_at if project.updated_at.tzinfo else project.updated_at.replace(tzinfo=timezone.utc)
+    queued = project.progress == 0 and project.stage == "Queued"
+    if datetime.now(timezone.utc) - updated < (QUEUED_TIMEOUT if queued else RUNNING_TIMEOUT):
+        return False
+    project.status, project.stage = "failed", "Stopped"
+    project.error = ("The analysis never started. Run it again." if queued
+                     else "The analysis stopped responding. Run it again.")
+    db.commit()
+    log.warning("Project %s: analysis made no progress since %s; marked as failed", project.id, updated)
+    return True
 
 
 def is_busy(project: Project) -> bool:

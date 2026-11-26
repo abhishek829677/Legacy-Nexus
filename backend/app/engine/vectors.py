@@ -56,6 +56,7 @@ class FileVectorStore:
         matrix = _normalise(vectors)
         tmp = d / "matrix.tmp.npy"
         np.save(tmp, matrix)
+        self._release(d)  # Windows cannot replace a file that is memory-mapped by an earlier search
         tmp.replace(d / "matrix.npy")
         (d / "meta.json").write_text(json.dumps({"model_key": model_key, "chunk_ids": chunk_ids,
                                                  "dim": int(matrix.shape[1])}))
@@ -96,11 +97,15 @@ class FileVectorStore:
         idx = idx[np.argsort(-sims[idx])]
         return [(meta["chunk_ids"][i], float(sims[i])) for i in idx]
 
-    def delete(self, project_id: int) -> None:
-        where = str(self._dir(project_id))
-        with self._lock:  # release the memory-mapped copy first: Windows cannot delete a mapped file
+    def _release(self, d: Path) -> None:
+        """Drop the cached memory-mapped copy of a folder's vectors, closing the file."""
+        where = str(d)
+        with self._lock:
             for k in [k for k in self._cache if k[0] == where]:
                 self._cache.pop(k)
+
+    def delete(self, project_id: int) -> None:
+        self._release(self._dir(project_id))  # Windows cannot delete a mapped file
         for name in ("matrix.npy", "meta.json"):
             (self._dir(project_id) / name).unlink(missing_ok=True)
 

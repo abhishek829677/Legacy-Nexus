@@ -23,9 +23,15 @@ param env string = 'prod'
 
 param location string = resourceGroup().location
 
+@description('Region for PostgreSQL only, when the main region does not allow it for this subscription (common on free trials)')
+param dbLocation string = location
+
 @description('Container images. The first deployment can use the placeholder; deploy.ps1 swaps in the real images.')
 param apiImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param webImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+
+@description('Name of an existing Container Registry in this resource group to use. Empty = create one.')
+param existingAcrName string = ''
 
 @description('PostgreSQL administrator login')
 param dbAdminUser string = 'lnxadmin'
@@ -117,16 +123,26 @@ resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   }
 }
 
-resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
-  name: take('${compact}acr${suffix}', 50)
+var useExistingAcr = !empty(existingAcrName)
+var acrName = useExistingAcr ? existingAcrName : take('${compact}acr${suffix}', 50)
+var acrLoginServer = '${toLower(acrName)}.azurecr.io'
+
+resource acrNew 'Microsoft.ContainerRegistry/registries@2023-07-01' = if (!useExistingAcr) {
+  name: acrName
   location: location
   sku: { name: 'Basic' }
   properties: { adminUserEnabled: false }
 }
 
+// The registry in use, whether created above or already there.
+resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: acrName
+}
+
 resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(acr.id, identity.id, roleAcrPull)
   scope: acr
+  dependsOn: [acrNew]
   properties: {
     principalId: identity.properties.principalId
     principalType: 'ServicePrincipal'
@@ -192,7 +208,7 @@ var vaultSecretUri = '${vault.properties.vaultUri}secrets/'
 
 resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2023-12-01-preview' = {
   name: '${base}-pg-${suffix}'
-  location: location
+  location: dbLocation
   sku: {
     name: effectiveDbSku
     tier: effectiveDbTier
@@ -288,10 +304,13 @@ resource queue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
   }
 }
 
+// Used only by the worker's scale rule. KEDA reads the queue's message count, which Service Bus allows
+// only with Manage (and Manage requires Listen and Send). With Listen alone every check returns 401,
+// the worker never starts and analyses stay "Queued". Scoped to this one queue.
 resource kedaListen 'Microsoft.ServiceBus/namespaces/queues/authorizationRules@2022-10-01-preview' = {
   parent: queue
   name: 'keda-scaler'
-  properties: { rights: ['Listen'] }
+  properties: { rights: ['Manage', 'Listen', 'Send'] }
 }
 
 resource busSender 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -391,7 +410,11 @@ var openAIEnv = deployOpenAI ? [
   { name: 'EMBEDDING_BASE_URL', value: openAIEndpoint }
   { name: 'EMBEDDING_DEPLOYMENT', value: openAIEmbeddingModel }
   { name: 'EMBEDDING_API_VERSION', value: openAIApiVersion }
-] : []
+] : [
+  // No Azure OpenAI: semantic search uses the model built into the image (no key, nothing leaves Azure).
+  { name: 'EMBEDDING_PROVIDER', value: 'builtin' }
+  { name: 'EMBEDDING_MODEL', value: 'sentence-transformers/all-MiniLM-L6-v2' }
+]
 
 var backendEnv = concat([
   { name: 'DEPLOYMENT_PROFILE', value: 'cloud' }
@@ -420,7 +443,7 @@ var backendEnv = concat([
 
 var dataVolume = [{ name: 'data', storageType: 'AzureFile', storageName: envStorage.name, mountOptions: 'dir_mode=0777,file_mode=0777' }]
 var dataMount = [{ volumeName: 'data', mountPath: '/app/data' }]
-var registry = [{ server: acr.properties.loginServer, identity: identity.id }]
+var registry = [{ server: acrLoginServer, identity: identity.id }]
 
 resource api 'Microsoft.App/containerApps@2024-03-01' = {
   name: apiName
@@ -450,9 +473,13 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           env: backendEnv
           resources: { cpu: json('1.0'), memory: '2Gi' }
           volumeMounts: dataMount
+          // Probes default to a 1 s timeout. The readiness check talks to PostgreSQL and the file share,
+          // which can take longer (cold start, database in another region), and a missed probe takes the
+          // replica out of traffic or restarts it. The startup probe gives migrations time on first boot.
           probes: [
-            { type: 'Liveness', httpGet: { path: '/api/health', port: 8000 }, periodSeconds: 30 }
-            { type: 'Readiness', httpGet: { path: '/api/health/ready', port: 8000 }, periodSeconds: 30, failureThreshold: 6 }
+            { type: 'Startup', httpGet: { path: '/api/health', port: 8000 }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 30 }
+            { type: 'Liveness', httpGet: { path: '/api/health', port: 8000 }, periodSeconds: 30, timeoutSeconds: 10, failureThreshold: 5 }
+            { type: 'Readiness', httpGet: { path: '/api/health/ready', port: 8000 }, periodSeconds: 30, timeoutSeconds: 15, failureThreshold: 6 }
           ]
         }
       ]
@@ -545,7 +572,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
           image: webImage
           env: [{ name: 'BACKEND_URL', value: apiInternalUrl }]
           resources: { cpu: json('0.5'), memory: '1Gi' }
-          probes: [{ type: 'Liveness', httpGet: { path: '/healthz', port: 80 }, periodSeconds: 30 }]
+          probes: [{ type: 'Liveness', httpGet: { path: '/healthz', port: 80 }, periodSeconds: 30, timeoutSeconds: 5 }]
         }
       ]
       scale: { minReplicas: isFree ? 0 : 1, maxReplicas: 3 }
@@ -554,8 +581,8 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 output webUrl string = 'https://${web.properties.configuration.ingress.fqdn}'
-output acrName string = acr.name
-output acrLoginServer string = acr.properties.loginServer
+output acrName string = acrName
+output acrLoginServer string = acrLoginServer
 output keyVaultName string = vault.name
 output postgresHost string = postgres.properties.fullyQualifiedDomainName
 output databases array = [database.name, docqaDatabase.name]

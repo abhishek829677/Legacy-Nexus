@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LuDownload, LuFileArchive } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
 import { Markdown } from "../components/Markdown";
@@ -9,17 +9,21 @@ import { useApi } from "../lib/hooks";
 
 type DocMeta = { id: string; title: string; category: string };
 
+// Business-rule documentation lives on the Business rules page.
+const isBusinessRuleDoc = (d: DocMeta) => d.category === "Rules" || d.id === "business-rule-documentation";
+
 export function DocsPage() {
   const { project, openSource } = useProject();
   const pid = project!.id;
   const toast = useToast();
   const { data: list, error } = useApi<DocMeta[]>(`/projects/${pid}/docs`);
+  const docs = useMemo(() => (list ?? []).filter((d) => !isBusinessRuleDoc(d)), [list]);
   const [active, setActive] = useState<string | null>(null);
   const { data: doc, loading } = useApi<DocMeta & { markdown: string }>(active ? `/projects/${pid}/docs/${active}` : null);
 
   useEffect(() => {
-    if (list && !active) setActive(list[0]?.id ?? null);
-  }, [list, active]);
+    if (!active || !docs.some((d) => d.id === active)) setActive(docs[0]?.id ?? null);
+  }, [docs, active]);
 
   const saveMd = () => {
     if (!doc) return;
@@ -40,7 +44,7 @@ export function DocsPage() {
       {error && <ErrorBox message={error} />}
       <div className="docs-layout">
         <nav className="doc-list" aria-label="Documents">
-          {list?.map((d) => (
+          {docs.map((d) => (
             <button key={d.id} className={active === d.id ? "on" : ""} onClick={() => setActive(d.id)}>
               {d.title}
               <div className="subtle">{d.category}</div>

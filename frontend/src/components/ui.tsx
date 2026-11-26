@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { LuInbox, LuX } from "react-icons/lu";
 
 /* ---------------- toasts ---------------- */
@@ -10,17 +10,44 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const push = useCallback((text: string, error = false) => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, text, error }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), error ? 6000 : 3500);
   }, []);
+  const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
   return (
     <ToastContext.Provider value={push}>
       {children}
       <div className="toast-wrap" role="status" aria-live="polite">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.error ? "err" : ""}`}>{t.text}</div>
-        ))}
+        {toasts.map((t) => <ToastItem key={t.id} toast={t} onClose={() => dismiss(t.id)} />)}
       </div>
     </ToastContext.Provider>
+  );
+}
+
+export const TOAST_MS = { info: 3500, error: 6000 };
+
+/**
+ * One toast. It closes itself after a few seconds; hovering it (or focusing its close button) pauses that,
+ * and moving away starts the countdown again from the beginning. The × closes it at once.
+ */
+function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
+  const duration = toast.error ? TOAST_MS.error : TOAST_MS.info;
+  const timer = useRef<number | undefined>(undefined);
+  const close = useRef(onClose);
+  close.current = onClose; // a new function every render; the timer must not restart because of that
+  const start = useCallback(() => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => close.current(), duration);
+  }, [duration]);
+  const pause = () => window.clearTimeout(timer.current);
+  useEffect(() => {
+    start();
+    return () => window.clearTimeout(timer.current);
+  }, [start]);
+  return (
+    <div className={`toast ${toast.error ? "err" : ""}`} onMouseEnter={pause} onMouseLeave={start}
+      onFocus={pause} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) start(); }}>
+      <span className="toast-text">{toast.text}</span>
+      <button type="button" className="toast-close" aria-label="Close notification" onClick={onClose}><LuX size={15} /></button>
+    </div>
   );
 }
 
@@ -148,16 +175,24 @@ export function CodeView({ lines, start = 1, highlightFrom, highlightTo, inline,
 
 /* ---------------- logo ---------------- */
 export function Logo({ size = 28 }: { size?: number }) {
+  const id = "lnx-logo";
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="7" fill="#183257" />
-      <g fill="#E9A23B">
-        <rect x="6" y="7" width="9" height="3" rx="1" />
-        <rect x="6" y="13" width="6" height="3" rx="1" />
-        <rect x="6" y="19" width="9" height="3" rx="1" />
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#22d3ee" />
+          <stop offset="0.5" stopColor="#0ea5c4" />
+          <stop offset="1" stopColor="#2563eb" />
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="8" fill={`url(#${id})`} />
+      <g fill="#ffffff" opacity="0.94">
+        <rect x="6" y="7" width="9" height="3" rx="1.5" />
+        <rect x="6" y="13" width="6" height="3" rx="1.5" />
+        <rect x="6" y="19" width="9" height="3" rx="1.5" />
       </g>
-      <path d="M15 8.5h4.5l3 7.5-3 7.5H15" stroke="#8FD3CC" strokeWidth="2" fill="none" />
-      <circle cx="23" cy="16" r="3" fill="#8FD3CC" />
+      <path d="M15 8.5h4.5l3 7.5-3 7.5H15" stroke="#bff3ea" strokeWidth="2" fill="none" />
+      <circle cx="23" cy="16" r="3" fill="#34d399" />
     </svg>
   );
 }

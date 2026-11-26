@@ -6,8 +6,8 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.deps import DB, CurrentUser, ProjectDep, WriterUser
 from app.models import Project, SourceFile
-from app.schemas import ProjectCreate, ProjectOut
-from app.services import analysis_runner, artifacts, audit, jobs, semantic, storage
+from app.schemas import ProjectCreate, ProjectOut, RepoBranches, RepoBranchQuery, RepoImport, RepoImportResult
+from app.services import analysis_runner, artifacts, audit, jobs, repo_import, semantic, storage
 from app.services.project_data import purge_project_rows
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -20,7 +20,10 @@ def list_projects(user: CurrentUser, db: DB) -> list[Project]:
     q = select(Project).order_by(Project.updated_at.desc())
     if user.role != "admin":
         q = q.where(Project.owner_id == user.id)
-    return list(db.scalars(q))
+    projects = list(db.scalars(q))
+    for p in projects:
+        analysis_runner.expire_if_stale(db, p)
+    return projects
 
 
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
@@ -45,6 +48,53 @@ def create_sample(user: WriterUser, db: DB, background: BackgroundTasks, request
     _queue_analysis(project, db, background)
     audit.record(db, "sample_loaded", user.id, f"project:{project.id}", request=request)
     return project
+
+
+@router.post("/repo-branches", response_model=RepoBranches)
+async def repo_branches(body: RepoBranchQuery, user: WriterUser) -> RepoBranches:
+    """List a public repository's branches (and its default) so the UI can offer a branch picker."""
+    if not get_settings().allow_repo_import:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Importing from a repository URL is disabled on this server")
+    try:
+        result = await run_in_threadpool(repo_import.list_remote_branches, body.url)
+    except repo_import.RepoImportError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    return RepoBranches(**result)
+
+
+@router.post("/from-repo", response_model=RepoImportResult, status_code=status.HTTP_201_CREATED)
+async def create_from_repo(body: RepoImport, user: WriterUser, db: DB, background: BackgroundTasks, request: Request) -> RepoImportResult:
+    """Create a project by cloning a public git repository and analysing its source files."""
+    if not get_settings().allow_repo_import:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Importing from a repository URL is disabled on this server")
+    # Validate the URL before creating anything, so a bad URL leaves no empty project behind.
+    try:
+        repo_import.normalise_repo_url(body.url)
+        repo_import.validate_branch(body.branch)
+    except repo_import.RepoImportError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+
+    project = Project(name=body.name.strip(), description=body.description.strip(), owner_id=user.id, stats={})
+    db.add(project)
+    db.commit()
+    try:
+        result = await run_in_threadpool(repo_import.clone_repo, project.id, body.url, body.branch)
+        if not result.stored:
+            raise repo_import.RepoImportError(
+                f"No analysable source files found in the repository ({result.skipped} file(s) skipped). "
+                "LegacyNexus reads COBOL, copybooks, JCL, SQL, Java, C#, Python, JavaScript/TypeScript, "
+                "shell scripts, YAML config, OpenAPI specs and notes.")
+    except repo_import.RepoImportError as exc:
+        storage.delete_project_files(project.id)
+        db.delete(project)
+        db.commit()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+
+    _queue_analysis(project, db, background)
+    audit.record(db, "repo_imported", user.id, f"project:{project.id}",
+                 {"url": body.url, "branch": body.branch, "files": len(result.stored), "skipped": result.skipped}, request)
+    return RepoImportResult(**ProjectOut.model_validate(project).model_dump(),
+                            imported_files=len(result.stored), skipped_files=result.skipped)
 
 
 def _queue_analysis(project: Project, db, background: BackgroundTasks) -> None:

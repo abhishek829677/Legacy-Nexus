@@ -4,11 +4,13 @@ import {
   LuPower, LuRefreshCw, LuSave, LuScanSearch, LuServer, LuShield, LuSlidersHorizontal, LuTrash2, LuUserRound, LuUsers, LuZap,
 } from "react-icons/lu";
 import { AppShell } from "../components/AppShell";
+import { ComboInput } from "../components/ComboInput";
+import { JsonTooltip } from "../components/JsonTooltip";
 import { SemanticSettings } from "../components/SemanticSettings";
 import { EmptyState, ErrorBox, Loading, Modal, useToast } from "../components/ui";
 import { api, qs } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { fmtDate, initials } from "../lib/format";
+import { fmtDate, initials, parseApiDate } from "../lib/format";
 import { useApi } from "../lib/hooks";
 import { navigate, useSearchParam } from "../lib/router";
 
@@ -173,9 +175,25 @@ function ModelsTab({ isAdmin }: { isAdmin: boolean }) {
       setTesting(null);
     }
   };
-  const remove = (m: SavedModel) => {
-    if (!confirm(`Delete the saved model “${m.name}”?${m.is_active ? " It is the active model, so questions will be answered with evidence only until you activate another." : ""}`)) return;
-    act(() => api.del(`/settings/models/${m.id}`), "Model deleted");
+  const remove = async (m: SavedModel) => {
+    const others = (models ?? []).filter((x) => x.id !== m.id && x.configured);
+    const note = !m.is_active ? ""
+      : others.length ? " It is the active model, so the next available model will take over automatically."
+      : " It is the active model and no other model is ready, so questions will be answered with evidence only.";
+    if (!confirm(`Delete the saved model “${m.name}”?${note}`)) return;
+    try {
+      await api.del(`/settings/models/${m.id}`);
+      if (m.is_active) {
+        // The server picks the next model (a fallback first); say which one so the switch is not a surprise.
+        const now = (await api.get<SavedModel[]>("/settings/models")).find((x) => x.is_active);
+        toast(now ? `Model deleted. ${now.name} is now the active model.` : "Model deleted. No other model is ready, so AI answers are off.");
+      } else {
+        toast("Model deleted");
+      }
+      reload();
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
   };
 
   if (error) return <ErrorBox message={error} />;
@@ -215,8 +233,10 @@ function ModelsTab({ isAdmin }: { isAdmin: boolean }) {
                       {m.last_test_ok === false && <span className="tag tag-red"><LuCircleAlert size={12} /> Test failed</span>}
                     </div>
                     <div className="meta">
-                      {m.provider_label.split(" (")[0]} · <span className="mono">{m.model || m.deployment || "—"}</span>
-                      {m.api_key_set && <> · key {m.api_key_masked}</>} · updated {fmtDate(m.updated_at)}
+                      {PROVIDER_SHORT[m.provider] ?? m.provider_label.split(" (")[0]}
+                      {" · "}{m.provider === "azure_openai" ? "Deployment" : "Model"}: <span className="mono">{(m.provider === "azure_openai" ? m.deployment : m.model) || "—"}</span>
+                      {m.api_key_set && <>{" · "}API key: <span className="mono">{maskedKey(m.api_key_masked)}</span></>}
+                      {" · "}<span title={fmtDate(m.updated_at)}>Updated: {fmtUpdated(m.updated_at)}</span>
                     </div>
                   </div>
                   {isAdmin && (
@@ -259,13 +279,20 @@ function ModelEditor({ providers, model, onClose, onSaved }: { providers: Record
   const p = providers[form.provider];
   const has = (f: string) => p?.fields.includes(f);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  // Same rule as the server: what this provider needs before the model can be saved.
+  const required = REQUIRED_FIELDS[form.provider] ?? ["api_key", "model"];
+  const filled = (f: string) => (f === "api_key" ? !!form.api_key.trim() || !!model?.api_key_set : !!String(form[f as keyof typeof form] ?? "").trim());
+  const missing = required.filter((f) => !filled(f)).map((f) => (f === "base_url" && form.provider === "azure_openai" ? "endpoint" : FIELD_LABELS[f]));
+  const isRequired = (f: string) => required.includes(f);
 
   useEffect(() => {
-    if (!model && p) setForm((f) => ({ ...f, model: p.model_suggestions[0] ?? "", api_version: p.default_api_version ?? "" }));
+    // A key typed for one provider must not be sent to another, so switching provider clears it.
+    if (!model && p) setForm((f) => ({ ...f, model: p.model_suggestions[0] ?? "", api_version: p.default_api_version ?? "", api_key: "" }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.provider]);
 
   const save = async () => {
+    if (missing.length) return;
     setBusy(true);
     try {
       const body: Record<string, unknown> = { ...form, is_small: isSmall, is_fallback: isFallback };
@@ -283,7 +310,11 @@ function ModelEditor({ providers, model, onClose, onSaved }: { providers: Record
 
   return (
     <Modal title={model ? `Edit ${model.name}` : "Add an AI model"} onClose={onClose} width={640}
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? <span className="spinner" /> : <LuSave size={15} />} Save model</button></>}>
+      footer={<>
+        {missing.length > 0 && <span className="subtle" role="status" style={{ marginRight: "auto", fontSize: 13 }}>Enter the {joinWords(missing)} to save.</span>}
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy || missing.length > 0}>{busy ? <span className="spinner" /> : <LuSave size={15} />} Save model</button>
+      </>}>
       <div className="stack">
         <div>
           <div className="label" style={{ marginBottom: 8 }}>Provider</div>
@@ -300,21 +331,29 @@ function ModelEditor({ providers, model, onClose, onSaved }: { providers: Record
         </div>
         <div className="grid-2">
           {has("model") && (
-            <Field id="mmodel" label="Model">
-              <input id="mmodel" className="input input-mono" list="msugg" value={form.model} onChange={(e) => set("model", e.target.value)} />
-              <datalist id="msugg">{p.model_suggestions.map((s) => <option key={s} value={s} />)}</datalist>
+            <Field id="mmodel" label={isRequired("model") ? "Model *" : "Model"}>
+              {p.model_suggestions.length
+                ? <ComboInput id="mmodel" className="input input-mono" value={form.model} onChange={(v) => set("model", v)} options={p.model_suggestions} />
+                : <input id="mmodel" className="input input-mono" value={form.model} onChange={(e) => set("model", e.target.value)} />}
             </Field>
           )}
-          {has("deployment") && <Field id="mdep" label="Deployment name"><input id="mdep" className="input input-mono" value={form.deployment} onChange={(e) => set("deployment", e.target.value)} /></Field>}
+          {has("deployment") && <Field id="mdep" label={isRequired("deployment") ? "Deployment name *" : "Deployment name"}><input id="mdep" className="input input-mono" value={form.deployment} onChange={(e) => set("deployment", e.target.value)} /></Field>}
           {has("api_key") && (
-            <Field id="mkey" label="API key" hint={model?.api_key_set ? `Saved: ${model.api_key_masked}. Leave blank to keep it.` : "Encrypted at rest and never shown again."}>
-              <div className="input-affix">
-                <input id="mkey" className="input input-mono" type={showKey ? "text" : "password"} autoComplete="off" value={form.api_key} onChange={(e) => set("api_key", e.target.value)} placeholder={p.key_hint} />
-                <button type="button" className="affix" onClick={() => setShowKey((s) => !s)} aria-label="Show key">{showKey ? <LuEyeOff size={16} /> : <LuEye size={16} />}</button>
-              </div>
-            </Field>
+            model?.api_key_set ? (
+              // A saved key is shown masked and cannot be edited here; the real key never reaches the browser.
+              <Field id="mkey" label={isRequired("api_key") ? "API key *" : "API key (optional)"} hint="Saved and encrypted. It cannot be viewed or changed here.">
+                <input id="mkey" className="input input-mono input-locked" value={maskedKey(model.api_key_masked)} readOnly aria-readonly="true" tabIndex={-1} />
+              </Field>
+            ) : (
+              <Field id="mkey" label={isRequired("api_key") ? "API key *" : "API key (optional)"} hint="Encrypted at rest and never shown again.">
+                <div className="input-affix">
+                  <input id="mkey" className="input input-mono" type={showKey ? "text" : "password"} autoComplete="off" value={form.api_key} onChange={(e) => set("api_key", e.target.value)} placeholder={p.key_hint} />
+                  <button type="button" className="affix" onClick={() => setShowKey((s) => !s)} aria-label="Show key">{showKey ? <LuEyeOff size={16} /> : <LuEye size={16} />}</button>
+                </div>
+              </Field>
+            )
           )}
-          {has("base_url") && <Field id="mbase" label={form.provider === "azure_openai" ? "Endpoint" : "Base URL"} hint={p.default_base_url ? `Leave blank for ${p.default_base_url}` : undefined}><input id="mbase" className="input input-mono" value={form.base_url} onChange={(e) => set("base_url", e.target.value)} placeholder={p.base_url_hint || p.default_base_url || ""} /></Field>}
+          {has("base_url") && <Field id="mbase" label={`${form.provider === "azure_openai" ? "Endpoint" : "Base URL"}${isRequired("base_url") ? " *" : ""}`} hint={p.default_base_url ? `Leave blank for ${p.default_base_url}` : undefined}><input id="mbase" className="input input-mono" value={form.base_url} onChange={(e) => set("base_url", e.target.value)} placeholder={p.base_url_hint || p.default_base_url || ""} /></Field>}
           {has("api_version") && <Field id="mver" label="API version"><input id="mver" className="input input-mono" value={form.api_version} onChange={(e) => set("api_version", e.target.value)} /></Field>}
         </div>
         <div>
@@ -328,6 +367,32 @@ function ModelEditor({ providers, model, onClose, onSaved }: { providers: Record
     </Modal>
   );
 }
+
+const REQUIRED_FIELDS: Record<string, string[]> = {
+  azure_openai: ["api_key", "base_url", "deployment"],
+  ollama: ["model"],
+  openai_compatible: ["model", "base_url"],
+};
+const FIELD_LABELS: Record<string, string> = { api_key: "API key", model: "model name", base_url: "base URL", deployment: "deployment name" };
+const PROVIDER_SHORT: Record<string, string> = {
+  anthropic: "Anthropic", openai: "OpenAI", azure_openai: "Azure OpenAI", gemini: "Google Gemini", ollama: "Ollama", openai_compatible: "OpenAI-compatible",
+};
+
+/** "today, 3:21 PM", "yesterday, 9:05 AM", or "Nov 12, 2026" (the full time with zone is in the tooltip). */
+function fmtUpdated(iso: string): string {
+  const d = parseApiDate(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(new Date()) - day(d)) / 86_400_000);
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (diff === 0) return `today, ${time}`;
+  if (diff === 1) return `yesterday, ${time}`;
+  return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+/** The server's mask ("sk-…3456") drawn as a key-length row of dots: "sk-••••••••••••3456". */
+const maskedKey = (masked: string) => (masked.includes("…") ? masked.replace("…", "•".repeat(12)) : "•".repeat(16));
+const joinWords = (xs: string[]) => (xs.length === 1 ? xs[0] : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 
 function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: ReactNode }) {
   return <div className="field"><label htmlFor={id}>{label}</label>{children}{hint && <span className="hint">{hint}</span>}</div>;
@@ -595,7 +660,9 @@ function AuditLog() {
                 <td style={{ fontSize: 13 }}>{a.user ?? "—"}</td>
                 <td><span className="tag">{a.action.replace(/_/g, " ")}</span></td>
                 <td className="mono" style={{ fontSize: 12.5 }}>{a.target}</td>
-                <td className="mono subtle" style={{ fontSize: 12, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{Object.keys(a.detail || {}).length ? JSON.stringify(a.detail) : ""}</td>
+                {/* Detail takes the width left by the other columns (width 100% + max-width 0), so the table never
+                    grows past the card and scrolls sideways; the preview is shortened to fit. */}
+                <td style={{ width: "100%", maxWidth: 0 }}>{Object.keys(a.detail || {}).length ? <JsonTooltip value={a.detail} /> : ""}</td>
               </tr>
             ))}
           </tbody>

@@ -35,6 +35,13 @@ class ProjectCreate(BaseModel):
     description: str = Field(default="", max_length=5000)
 
 
+class RepoImport(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=5000)
+    url: str = Field(min_length=1, max_length=2048, description="Public git repository URL (http/https)")
+    branch: str | None = Field(default=None, max_length=255, description="Branch or tag to clone; default branch if omitted")
+
+
 class ProjectOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -48,6 +55,21 @@ class ProjectOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     analyzed_at: datetime | None
+
+
+class RepoBranchQuery(BaseModel):
+    url: str = Field(min_length=1, max_length=2048, description="Public git repository URL (http/https)")
+
+
+class RepoBranches(BaseModel):
+    default: str | None = None
+    branches: list[str] = []
+
+
+class RepoImportResult(ProjectOut):
+    """A created project plus how many files the clone kept, so the UI can flag a near-empty import."""
+    imported_files: int = 0
+    skipped_files: int = 0
 
 
 class AskRequest(BaseModel):

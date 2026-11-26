@@ -31,6 +31,10 @@ def apply(db: Session) -> list[str]:
                                       "api_version": s.ai_api_version, "api_key": s.ai_api_key or ""}, None)
             applied.append(f"AI model {s.ai_provider}:{s.ai_deployment or s.ai_model}")
     row = semantic.get_row(db)
+    if s.embedding_provider and _unreachable_local_ollama(s, row):
+        log.warning("Semantic search was set to Ollama on localhost, which does not exist in the cloud; "
+                    "switching to EMBEDDING_PROVIDER=%s", s.embedding_provider)
+        row.provider, row.updated_by = "none", None
     if s.embedding_provider and row.provider in ("", "none") and row.updated_by is None:
         if s.embedding_provider not in EMBEDDING_CATALOG and s.embedding_provider != "openai_compatible":
             log.warning("EMBEDDING_PROVIDER=%s is not a known provider; ignored", s.embedding_provider)
@@ -42,3 +46,11 @@ def apply(db: Session) -> list[str]:
                                       "api_key": s.embedding_api_key or ""}, None)
             applied.append(f"embedding model {s.embedding_provider}:{s.embedding_deployment or s.embedding_model}")
     return applied
+
+
+def _unreachable_local_ollama(s, row) -> bool:
+    """Ollama on localhost only exists on a developer machine; in the cloud profile it can never answer."""
+    if s.deployment_profile.lower() != "cloud" or row.provider != "ollama":
+        return False
+    url = (row.base_url or "").lower()
+    return not url or "localhost" in url or "127.0.0.1" in url

@@ -29,9 +29,18 @@ param(
   [switch] $WithAzureOpenAI,
   [string] $OpenAILocation = "",
   # Build the images with Docker on this machine and push them, instead of building in Azure (az acr build)
-  [switch] $LocalBuild
+  [switch] $LocalBuild,
+  # First run only: generate the first administrator's password instead of prompting (non-interactive runs).
+  # It is stored only in Key Vault as bootstrap-admin-password.
+  [switch] $GenerateAdminPassword,
+  # Use a Container Registry that already exists in the resource group instead of creating one
+  [string] $ExistingAcrName = "",
+  # Region for PostgreSQL only, when -Location does not allow it (free trials often hit this)
+  [string] $DbLocation = ""
 )
-$ErrorActionPreference = "Stop"
+# "Continue", not "Stop": in Windows PowerShell 5.1, "Stop" turns any warning that az or docker writes to
+# stderr into a fatal error. Failures are caught with Assert-Ok after each command instead.
+$ErrorActionPreference = "Continue"
 $root = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $deploymentName = "legacynexus-$Env"
 $tag = (Get-Date -Format "yyyyMMddHHmm")
@@ -56,6 +65,7 @@ function New-Secret([int] $bytes = 36) {
 
 Write-Host "==> Resource group $ResourceGroup ($Location)"
 az group create -n $ResourceGroup -l $Location -o none
+Assert-Ok "Creating resource group $ResourceGroup"
 
 $me = az ad signed-in-user show --query id -o tsv 2>$null
 $principalType = "User"
@@ -68,13 +78,19 @@ $common = @("namePrefix=$NamePrefix", "env=$Env", "bootstrapAdminEmail=$AdminEma
             "deployerPrincipalId=$me", "deployerPrincipalType=$principalType", "sizing=$Sizing",
             "deployOpenAI=$($WithAzureOpenAI.IsPresent.ToString().ToLower())")
 if ($OpenAILocation) { $common += "openAILocation=$OpenAILocation" }
+if ($ExistingAcrName) { $common += "existingAcrName=$ExistingAcrName" }
+if ($DbLocation) { $common += "dbLocation=$DbLocation" }
 
 if ($first) {
   Write-Host "==> First deployment: generating secrets (stored only in Key Vault)"
   $dbPassword = "Lnx!" + (New-Secret 24)
   $secretKey = New-Secret 48
-  $adminPassword = Read-Host -Prompt "Password for the first administrator ($AdminEmail)" -AsSecureString
-  $adminPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPassword))
+  if ($GenerateAdminPassword) {
+    $adminPlain = "Adm!" + (New-Secret 18)
+  } else {
+    $adminPassword = Read-Host -Prompt "Password for the first administrator ($AdminEmail)" -AsSecureString
+    $adminPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPassword))
+  }
 
   Write-Host "==> Creating infrastructure (10-15 minutes)"
   $out = az deployment group create -g $ResourceGroup -n $deploymentName -f (Join-Path $PSScriptRoot "main.bicep") `
@@ -122,3 +138,6 @@ Assert-Ok "Rolling out images"
 Write-Host ""
 Write-Host "LegacyNexus AI is deployed: $($out.webUrl.value)"
 Write-Host "Readiness of every backing service: $($out.webUrl.value)/api/health/ready"
+if ($first -and $GenerateAdminPassword) {
+  Write-Host "Admin password: az keyvault secret show --vault-name $($out.keyVaultName.value) -n bootstrap-admin-password --query value -o tsv"
+}

@@ -6,6 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# git is used to import a project directly from a repository URL (POST /projects/from-repo).
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system app && useradd --system --gid app --home /app app
 
 # INSTALL_AZURE=false builds a smaller image for air-gapped / on-premises installs.
@@ -15,6 +19,12 @@ COPY requirements.txt requirements-azure.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt \
     && if [ "$INSTALL_AZURE" = "true" ]; then pip install -r requirements-azure.txt; fi \
     && python -c "from tree_sitter_language_pack import download; download(['java','csharp','python','javascript','typescript','tsx'])"
+
+# Built-in embedding models for semantic search, baked into the image so they work without internet access.
+ENV FASTEMBED_CACHE_PATH=/app/models
+RUN python -c "from fastembed import TextEmbedding; [list(TextEmbedding(m, cache_dir='/app/models').embed(['warm up'])) for m in ('BAAI/bge-small-en-v1.5', 'sentence-transformers/all-MiniLM-L6-v2')]"
+# The models are in the image now: never contact the model hub at run time.
+ENV HF_HUB_OFFLINE=1
 
 COPY app ./app
 COPY migrations ./migrations

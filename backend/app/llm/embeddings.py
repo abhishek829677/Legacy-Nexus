@@ -1,21 +1,44 @@
-"""Embedding provider adapters over plain HTTPS, used for semantic (vector) search.
+"""Embedding provider adapters, used for semantic (vector) search.
 
 Embeddings are optional. Without them, search is keyword-only (BM25 + graph boosts).
+The built-in provider runs a small model inside this process (ONNX via fastembed, CPU only); every other
+provider is called over plain HTTPS.
 """
 from __future__ import annotations
 
+import os
+import threading
 import time
 from dataclasses import dataclass
 
 import httpx
 
-# Model names are suggestions; any model id the provider serves can be typed in.
+# Models the built-in provider can run. The Docker image downloads them at build time (FASTEMBED_CACHE_PATH),
+# so they work without internet access; elsewhere they are downloaded once on first use. The first one is the default.
+# Indexing runs on CPU: measured ~11 (MiniLM) vs ~3 (bge-small) code pieces per second on an 8-core laptop.
+BUILTIN_MODELS: dict[str, str] = {
+    "sentence-transformers/all-MiniLM-L6-v2": "Recommended. Fastest (about 4x bge-small); reads ~256 tokens of each code piece.",
+    "BAAI/bge-small-en-v1.5": "More accurate, about 4x slower to index; reads ~512 tokens of each code piece.",
+}
+
+# Model names are suggestions; any model id the provider serves can be typed in (except for the built-in provider).
 EMBEDDING_CATALOG: dict[str, dict] = {
+    "builtin": {
+        "label": "Built-in (runs inside LegacyNexus, code never leaves the server)",
+        "fields": ["model"],
+        "default_base_url": "",
+        "model_suggestions": list(BUILTIN_MODELS),
+        "model_notes": BUILTIN_MODELS,
+        "fixed_models": True,
+        "local": True,
+        "key_hint": "",
+    },
     "ollama": {
         "label": "Ollama (local, code never leaves your network)",
         "fields": ["model", "base_url"],
         "default_base_url": "http://localhost:11434",
         "model_suggestions": ["nomic-embed-text", "mxbai-embed-large", "bge-m3"],
+        "local": True,
         "key_hint": "",
     },
     "openai": {
@@ -80,6 +103,8 @@ class EmbeddingConfig:
     def configured(self) -> bool:
         if self.provider not in EMBEDDING_CATALOG:
             return False
+        if self.provider == "builtin":
+            return self.model in BUILTIN_MODELS
         if self.provider == "azure_openai":
             return bool(self.api_key and self.base_url and self.deployment)
         if self.provider == "ollama":
@@ -110,6 +135,8 @@ def embed_texts(cfg: EmbeddingConfig, texts: list[str], kind: str = "document",
     query_prefix, doc_prefix = cfg.prefixes()
     prefix = query_prefix if kind == "query" else doc_prefix
     prepared = [prefix + t[: cfg.max_chars] for t in texts]
+    if cfg.provider == "builtin":
+        return _builtin(cfg, prepared, progress)
     handler = {
         "ollama": _ollama, "openai": _openai, "openai_compatible": _openai, "azure_openai": _azure,
         "gemini": _gemini,
@@ -152,6 +179,48 @@ def _with_retry(call, attempts: int = 3):
                 raise
         time.sleep(2 ** attempt)
     return None
+
+
+# ------------------------------------------------------------------ built-in (in-process) models
+
+_builtin_models: dict[str, object] = {}
+_builtin_lock = threading.Lock()
+
+
+def _builtin_model(name: str):
+    """Load a built-in model once per process; later calls reuse it."""
+    if name not in BUILTIN_MODELS:
+        raise EmbeddingError(f"'{name}' is not a built-in model. Choose one of: {', '.join(BUILTIN_MODELS)}")
+    with _builtin_lock:
+        if name not in _builtin_models:
+            try:
+                from fastembed import TextEmbedding
+            except ImportError as exc:
+                raise EmbeddingError("The built-in embedding model needs the fastembed package "
+                                     "(pip install -r requirements.txt)") from exc
+            try:
+                _builtin_models[name] = TextEmbedding(model_name=name, cache_dir=os.getenv("FASTEMBED_CACHE_PATH") or None)
+            except Exception as exc:  # download or model file problems
+                raise EmbeddingError(f"Could not load the built-in model {name}: {exc}") from exc
+        return _builtin_models[name]
+
+
+def _builtin(cfg: EmbeddingConfig, texts: list[str], progress=None) -> list[list[float]]:
+    model = _builtin_model(cfg.model)
+    out: list[list[float]] = []
+    try:
+        for start in range(0, len(texts), cfg.batch_size):
+            batch = texts[start:start + cfg.batch_size]
+            out.extend(v.tolist() for v in model.embed(batch, batch_size=len(batch)))
+            if progress:
+                progress(len(out), len(texts))
+    except EmbeddingError:
+        raise
+    except Exception as exc:
+        raise EmbeddingError(f"The built-in model failed: {exc}") from exc
+    if len(out) != len(texts) or len({len(v) for v in out}) != 1:
+        raise EmbeddingError("The built-in model returned vectors of inconsistent size")
+    return out
 
 
 def _ollama(client: httpx.Client, cfg: EmbeddingConfig, batch: list[str], kind: str) -> list[list[float]]:
