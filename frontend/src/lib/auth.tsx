@@ -7,7 +7,7 @@ import type { DocRole, User } from "./types";
 export const SIGNIN_ROLES: { id: DocRole; label: string; hint: string }[] = [
   { id: "business", label: "Business Person", hint: "Requirements, rules, processes and outcomes" },
   { id: "developer", label: "Developer", hint: "Architecture, logic, data and constraints" },
-  { id: "tester", label: "Tester", hint: "Test scenarios, edge cases and risks" },
+  { id: "tester", label: "Admin", hint: "Workspace administration, users and settings" },
 ];
 const ROLE_KEY = "legacynexus.signinRole";
 

@@ -69,7 +69,7 @@ export function ProjectsPage() {
         <div className="row-wrap app-hero-actions">
           {canWrite && (
             <button className="btn" onClick={loadSample} disabled={busySample} data-tour="load-sample">
-              {busySample ? <span className="spinner" /> : <LuSparkles size={16} />} Load sample application
+              {busySample ? <span className="spinner" /> : <LuSparkles size={16} />} Load project repository
             </button>
           )}
           {canWrite && (
